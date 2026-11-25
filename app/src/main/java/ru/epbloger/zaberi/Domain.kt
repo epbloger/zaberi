@@ -34,3 +34,11 @@ fun detectStore(text: String): String? {
 fun refundTargetValid(paid:Long,received:Long,target:Long):Boolean = paid>=0 && received in 0..paid && target in received..paid
 fun validOperationDate(value:String,today:LocalDate):Boolean = runCatching { val date=LocalDate.parse(value); !date.isAfter(today) }.getOrDefault(false)
 fun canMarkPayment(status:Status,paid:Long,returned:Boolean,cancelled:Boolean):Boolean = paid==0L&&!returned&&!cancelled&&status in listOf(Status.TRANSIT,Status.READY,Status.RECEIVED,Status.DONE,Status.RETURN_PLANNED)
+
+fun orderPriority(status:Status,deadline:LocalDate?,today:LocalDate):Int = when {
+ status.archived -> 4
+ deadline!=null && !deadline.isAfter(today.plusDays(1)) && status in listOf(Status.READY,Status.RETURN_PLANNED,Status.REFUND) -> 0
+ status==Status.READY -> 1
+ status==Status.REFUND||status==Status.RETURN_PLANNED -> 2
+ else -> 3
+}
