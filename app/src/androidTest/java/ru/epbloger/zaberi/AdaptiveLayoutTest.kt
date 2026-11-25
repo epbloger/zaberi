@@ -138,6 +138,7 @@ class AdaptiveLayoutTest {
         compose.onNodeWithTag("new_order").performTouchInput{click()}
         enterTextWithKeyboard("order_name", "Черновик")
         compose.onNodeWithTag("open_pickup_map").performScrollTo().performTouchInput{click()}
+        compose.onNodeWithTag("confirm_online_map").performClick()
         assertInsideWindow("save_pickup")
         enterTextWithKeyboard("map_search", "Москва")
         assertInsideWindow("save_pickup")
