@@ -123,7 +123,7 @@ class MainActivity:ComponentActivity(){
             actions={if(order!=null)IconButton(onClick={editing=true}){Icon(Icons.Default.Edit,"Редактировать")}else if(tab==0)IconButton(onClick={searchVisible=!searchVisible}){Icon(if(searchVisible)Icons.Default.Close else Icons.Default.Search,"Поиск")}},
             colors=TopAppBarDefaults.topAppBarColors(containerColor=MaterialTheme.colorScheme.background)
         )},
-        bottomBar={if(order==null&&settingsPage.isEmpty())NavigationBar(windowInsets=WindowInsets(0,0,0,0),containerColor=MaterialTheme.colorScheme.surface){nav.forEachIndexed{i,s->NavigationBarItem(selected=tab==i,onClick={tab=i;searchVisible=false},icon={Icon(icons[i],s)},label={Text(s,style=MaterialTheme.typography.labelSmall)})}}},
+        bottomBar={if(order==null&&settingsPage.isEmpty())NavigationBar(windowInsets=WindowInsets(0,0,0,0),containerColor=MaterialTheme.colorScheme.surface){nav.forEachIndexed{i,s->NavigationBarItem(selected=tab==i,onClick={tab=i;searchVisible=false},icon={Icon(icons[i],s)},label={Text(s,style=MaterialTheme.typography.labelSmall,maxLines=1,overflow=TextOverflow.Ellipsis)})}}},
         floatingActionButton={if(order==null&&tab==0)ExtendedFloatingActionButton(onClick={imported="";add=true},modifier=Modifier.testTag("new_order"),icon={Icon(Icons.Default.Add,null)},text={Text("Добавить заказ")})}
     ){pad->
         Box(Modifier.fillMaxSize().padding(pad)){
@@ -287,7 +287,7 @@ class MainActivity:ComponentActivity(){
                 val d=if(state.deadlineLabel!=null)deadline.trim().takeIf{it.isNotEmpty()}else null
                 val o=old?.copy(name=name.trim(),store=store.trim(),price=parsed,deadline=d,point=point.trim(),link=link.trim(),note=note.trim(),category=category.trim(),pointLat=pointLat,pointLon=pointLon)?:Order(uid(),name.trim(),store.trim(),parsed,if(paid)parsed?:0 else 0,status,d,point.trim(),link.trim(),note.trim(),today(),category=category.trim(),pointLat=pointLat,pointLon=pointLon)
                 focus.clearFocus();keyboard?.hide();save(o)
-            },modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("save_order")){Text(if(old==null)"Добавить заказ" else "Сохранить")}
+            },modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("save_order")){Text(if(old==null)"Добавить заказ" else "Сохранить",maxLines=2)}
     }){
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal=16.dp,vertical=12.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
             Text("Основное",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
@@ -381,7 +381,7 @@ class MainActivity:ComponentActivity(){
     val byDay=active.groupBy{it.deadline}
     val offset=month.atDay(1).dayOfWeek.value-1
     LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(14.dp)){
-        item{Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){FilterChip(!upcoming,{upcoming=false},{Text("Календарь")});FilterChip(upcoming,{upcoming=true},{Text("Все сроки")})}}
+        item{Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){FilterChip(!upcoming,{upcoming=false},{Text("Календарь")});FilterChip(upcoming,{upcoming=true},{Text("Все сроки")})}}
         if(!upcoming){
             item{
                 OutlinedCard(shape=RoundedCornerShape(24.dp),colors=CardDefaults.outlinedCardColors(containerColor=MaterialTheme.colorScheme.surface)){
@@ -438,7 +438,7 @@ class MainActivity:ComponentActivity(){
     val groups=subset.groupBy{t->if(grouping=="Магазины")index[t.orderId]?.store?:"Другой" else index[t.orderId]?.category?.ifBlank{"Без категории"}?:"Без категории"}.mapValues{(_,v)->v.sumOf{it.amount}}.toList().sortedByDescending{it.second}
     val largest=groups.maxOfOrNull{kotlin.math.abs(it.second)}?.coerceAtLeast(1L)?:1L
     LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
-        item{Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("Месяц","Год","Всё время").forEach{FilterChip(period==it,{period=it;offset=0},{Text(it)})}}}
+        item{Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("Месяц","Год","Всё время").forEach{FilterChip(period==it,{period=it;offset=0},{Text(it)})}}}
         if(period!="Всё время")item{Row(verticalAlignment=Alignment.CenterVertically){
             IconButton(onClick={if(offset> -1200)offset--}){Icon(Icons.Default.ChevronLeft,"Предыдущий период")}
             Text(if(period=="Месяц")month.format(DateTimeFormatter.ofPattern("LLLL yyyy",Locale("ru"))).replaceFirstChar{it.titlecase(Locale("ru"))}else year.toString(),Modifier.weight(1f),style=MaterialTheme.typography.titleMedium,textAlign=androidx.compose.ui.text.style.TextAlign.Center)
@@ -453,7 +453,7 @@ class MainActivity:ComponentActivity(){
         }}
         item{Row(horizontalArrangement=Arrangement.spacedBy(10.dp)){Metric("Оплачено",money(spent),Modifier.weight(1f));Metric("Возвращено",money(refund),Modifier.weight(1f))}}
         item{Metric("Ожидаются возвраты · все заказы",money(pending),Modifier.fillMaxWidth())}
-        item{Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("Магазины","Категории").forEach{FilterChip(grouping==it,{grouping=it},{Text(it)})}}}
+        item{Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("Магазины","Категории").forEach{FilterChip(grouping==it,{grouping=it},{Text(it)})}}}
         if(groups.isEmpty())item{Text("Нет операций за выбранный период.",color=MaterialTheme.colorScheme.onSurfaceVariant)}
         items(groups){(label,total)->
             OutlinedCard(shape=RoundedCornerShape(18.dp),colors=CardDefaults.outlinedCardColors(containerColor=MaterialTheme.colorScheme.surface)){

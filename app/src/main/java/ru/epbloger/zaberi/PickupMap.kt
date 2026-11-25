@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.draw.clipToBounds
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -171,9 +172,10 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
 }
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable internal fun MapPicker(address:String,lat:Double?,lon:Double?,close:()->Unit,save:(String,Double,Double)->Unit){
-    BackHandler(onBack=close)
     val focus=LocalFocusManager.current
     val keyboard=LocalSoftwareKeyboardController.current
+    val leaveMap:()->Unit={focus.clearFocus();keyboard?.hide();close()}
+    BackHandler(onBack=leaveMap)
     var editLabel by rememberSaveable{mutableStateOf(false)}
     val ctx=LocalContext.current
     val scope=rememberCoroutineScope()
@@ -229,7 +231,7 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
             if(images.size>48)images.keys.filter{it !in needed}.take(images.size-48).forEach{images.remove(it)}
         }
     }
-    AdaptiveActionScreen(title="Выбрать точку",close=close,action={
+    AdaptiveActionScreen(title="Выбрать точку",close=leaveMap,action={
         Button(enabled=zoom>=14&&images.containsKey(center)&&label.length<=200,onClick={
             val selectedLat=yToLat(y);val selectedLon=xToLon(x)
             val name=label.trim().ifBlank{String.format(Locale.ROOT,"Точка %.6f, %.6f",selectedLat,selectedLon)}
@@ -237,7 +239,8 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
         },modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("save_pickup")){Text("Сохранить точку")}
     }){
         BoxWithConstraints(Modifier.fillMaxSize()){
-            val compact=maxHeight<350.dp
+            val compact=maxHeight<350.dp || maxWidth<340.dp || LocalDensity.current.fontScale>=1.5f
+            val veryShort=maxHeight<155.dp
             Column(Modifier.fillMaxSize()){
                 Row(Modifier.fillMaxWidth().padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically){
                     OutlinedTextField(search,{search=it},singleLine=true,label={Text("Город или адрес")},modifier=Modifier.weight(1f).testTag("map_search"))
@@ -254,10 +257,11 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
                             finally{searching=false}
                         }
                     }){Icon(Icons.Default.Search,"Найти адрес")}
+                    if(compact&&!veryShort)IconButton(onClick={focus.clearFocus();keyboard?.hide();editLabel=true}){Icon(Icons.Default.Edit,"Название ПВЗ")}
                 }
-                if(!compact&&locationMessage.isNotBlank())Text(locationMessage,Modifier.padding(horizontal=12.dp,vertical=4.dp),style=MaterialTheme.typography.bodySmall)
+                if(!veryShort&&locationMessage.isNotBlank())Text(locationMessage,Modifier.padding(horizontal=12.dp,vertical=4.dp),style=MaterialTheme.typography.bodySmall)
                 if(searching||locating)LinearProgressIndicator(Modifier.fillMaxWidth())
-                if(searchError.isNotBlank())Text(searchError,Modifier.padding(horizontal=12.dp),style=MaterialTheme.typography.bodySmall)
+                if(!veryShort&&searchError.isNotBlank())Text(searchError,Modifier.padding(horizontal=12.dp),style=MaterialTheme.typography.bodySmall)
                 if(results.isNotEmpty())LazyColumn(Modifier.heightIn(max=if(compact)72.dp else 140.dp)){items(results){a->
                     val title=a.getAddressLine(0)?:a.locality?:search
                     ListItem(headlineContent={Text(title)},modifier=Modifier.clickable{x=lonToX(a.longitude);y=latToY(a.latitude);zoom=17;if(label.isBlank())label=title.take(200);results=emptyList()})
@@ -266,7 +270,7 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
                     Text(if(zoom<14)"Приблизьте карту до здания" else "Нажмите на нужное здание",Modifier.weight(1f),style=MaterialTheme.typography.bodySmall,maxLines=2)
                     TextButton(onClick={editLabel=true}){Text("Название")}
                 }
-                Box(Modifier.fillMaxWidth().weight(1f).background(Color(0xFFE5E9E5))){
+                BoxWithConstraints(Modifier.fillMaxWidth().weight(1f).clipToBounds().background(Color(0xFFE5E9E5))){
                     Canvas(Modifier.fillMaxSize().onSizeChanged{size=it}.pointerInput(tilePx){
                         detectTapGestures{tap->val n=(1 shl zoom).toDouble();x=wrapX(x+(tap.x-this.size.width/2f)/(tilePx*n));y=(y+(tap.y-this.size.height/2f)/(tilePx*n)).coerceIn(0.0,1.0)}
                     }.pointerInput(tilePx){
@@ -294,7 +298,7 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
                         }
                     }
                     Icon(Icons.Default.LocationOn,"Выбранная точка",Modifier.align(Alignment.Center).offset(y=(-17).dp).size(40.dp),tint=Color(0xFFB42318))
-                    Column(Modifier.align(Alignment.CenterEnd).padding(8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
+                    val controls:@Composable ()->Unit={
                         FilledTonalIconButton(enabled=!locating,onClick={
                             if(ctx.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED||ctx.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)==PackageManager.PERMISSION_GRANTED)locate()
                             else locationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION))
@@ -302,6 +306,8 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
                         FilledTonalIconButton(onClick={zoom=(zoom+1).coerceAtMost(19)},enabled=zoom<19){Icon(Icons.Default.Add,"Приблизить")}
                         FilledTonalIconButton(onClick={zoom=(zoom-1).coerceAtLeast(2)},enabled=zoom>2){Icon(Icons.Default.Remove,"Отдалить")}
                     }
+                    if(maxHeight>=168.dp)Column(Modifier.align(Alignment.CenterEnd).padding(4.dp),verticalArrangement=Arrangement.spacedBy(4.dp)){controls()}
+                    else if(maxHeight>=48.dp)Row(Modifier.align(Alignment.BottomCenter),horizontalArrangement=Arrangement.spacedBy(2.dp)){controls()}
                     if(loading)LinearProgressIndicator(Modifier.align(Alignment.TopCenter).fillMaxWidth())
                     if(failed&&!loading)FilledTonalButton(onClick={retry++},modifier=Modifier.align(Alignment.TopCenter).padding(8.dp)){Text("Повторить загрузку")}
                 }
