@@ -33,6 +33,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -69,7 +72,7 @@ class MainActivity:ComponentActivity(){
             val preferences=remember{Preferences(applicationContext)}
             val dark=when(preferences.theme){"dark"->true;"light"->false;else->isSystemInDarkTheme()}
             MaterialTheme(colorScheme=if(dark)darkColorScheme(primary=Color(0xFFA9B2FF))else lightColorScheme(primary=Brand,onPrimary=Color.White,primaryContainer=Color(0xFFE6E9FF),onPrimaryContainer=Color(0xFF202B78),background=Color(0xFFF6F7FB),surface=Color.White,surfaceVariant=Color(0xFFF0F1F6),onSurfaceVariant=Color(0xFF4E5263),outlineVariant=Color(0xFFE0E3EC))){
-                Home(shared,openId,{shared=null},{openId=null},preferences)
+                SafeAppViewport{MapOverlayHost{Home(shared,openId,{shared=null},{openId=null},preferences)}}
             }
         }
     }
@@ -105,24 +108,28 @@ class MainActivity:ComponentActivity(){
     BackHandler(enabled=add||editing||order!=null||settingsPage.isNotEmpty()||searchVisible){if(add)add=false else if(editing)editing=false else if(order!=null)selected=null else if(settingsPage.isNotEmpty())settingsPage=if(settingsPage in listOf("Конфиденциальность","Условия использования","Реклама и сторонние сервисы","Разработчик и контакты"))"Юридическая информация" else "" else searchVisible=false}
     val nav=listOf("Заказы","Календарь","Статистика","Настройки")
     val icons=listOf(Icons.Default.Inventory2,Icons.Default.CalendarMonth,Icons.Default.BarChart,Icons.Default.Settings)
-    Scaffold(
+    if(add){
+        OrderForm(null,imported,catalog,orders,{add=false}){o->vm.add(o);add=false;tab=0}
+    }else if(editing&&order!=null){
+        OrderForm(order,"",catalog,orders,{editing=false}){o->vm.edit(o.id,o.name,o.store,o.price,o.deadline,o.point,o.link,o.note,o.category,o.pointLat,o.pointLon);editing=false}
+    }else Scaffold(
+        contentWindowInsets=WindowInsets(0,0,0,0),
         containerColor=MaterialTheme.colorScheme.background,
         snackbarHost={SnackbarHost(snack)},
         topBar={TopAppBar(
+            windowInsets=WindowInsets(0,0,0,0),
             title={Text(order?.name?:if(tab==0)"Забери" else if(tab==3&&settingsPage.isNotEmpty())settingsPage else nav[tab],fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)},
             navigationIcon={if(order!=null||settingsPage.isNotEmpty())IconButton(onClick={if(order!=null)selected=null else settingsPage=if(settingsPage in listOf("Конфиденциальность","Условия использования","Реклама и сторонние сервисы","Разработчик и контакты"))"Юридическая информация" else ""}){Icon(Icons.Default.ArrowBack,"Назад")}},
             actions={if(order!=null)IconButton(onClick={editing=true}){Icon(Icons.Default.Edit,"Редактировать")}else if(tab==0)IconButton(onClick={searchVisible=!searchVisible}){Icon(if(searchVisible)Icons.Default.Close else Icons.Default.Search,"Поиск")}},
             colors=TopAppBarDefaults.topAppBarColors(containerColor=MaterialTheme.colorScheme.background)
         )},
-        bottomBar={if(order==null&&settingsPage.isEmpty())NavigationBar(containerColor=MaterialTheme.colorScheme.surface){nav.forEachIndexed{i,s->NavigationBarItem(selected=tab==i,onClick={tab=i;searchVisible=false},icon={Icon(icons[i],s)},label={Text(s,style=MaterialTheme.typography.labelSmall)})}}},
+        bottomBar={if(order==null&&settingsPage.isEmpty())NavigationBar(windowInsets=WindowInsets(0,0,0,0),containerColor=MaterialTheme.colorScheme.surface){nav.forEachIndexed{i,s->NavigationBarItem(selected=tab==i,onClick={tab=i;searchVisible=false},icon={Icon(icons[i],s)},label={Text(s,style=MaterialTheme.typography.labelSmall)})}}},
         floatingActionButton={if(order==null&&tab==0)ExtendedFloatingActionButton(onClick={imported="";add=true},icon={Icon(Icons.Default.Add,null)},text={Text("Добавить заказ")})}
     ){pad->
         Box(Modifier.fillMaxSize().padding(pad)){
             when{order!=null->Detail(order,history.filter{it.orderId==order.id},vm,{selected=null});tab==0->Orders(orders,{selected=it.id},{vm.act(it.id,"received")},searchVisible,{imported="";add=true},preferences.personalizedAds);tab==1->CalendarPage(orders,{selected=it.id});tab==2->Stats(orders,tx);else->SettingsPage(preferences,catalog,vm,settingsPage,{settingsPage=it})}
         }
     }
-    if(add)OrderForm(null,imported,catalog,orders,{add=false}){o->vm.add(o);add=false;tab=0}
-    if(editing&&order!=null)OrderForm(order,"",catalog,orders,{editing=false}){o->vm.edit(o.id,o.name,o.store,o.price,o.deadline,o.point,o.link,o.note,o.category,o.pointLat,o.pointLon);editing=false}
 }
 
 @Composable private fun Metric(label:String,value:String,modifier:Modifier=Modifier,accent:Boolean=false){
@@ -273,23 +280,21 @@ class MainActivity:ComponentActivity(){
     val parsed=parseMoney(price)
     val state=Status.valueOf(status)
     val valid=name.isNotBlank()&&name.length<=200&&store.isNotBlank()&&store.length<=200&&category.length<=200&&point.length<=200&&validPoint(pointLat,pointLon)&&link.length<=8192&&note.length<=10000&&(!duplicate||duplicateConfirmed)&&(price.isBlank()||parsed!=null)&&(!paid||parsed!=null)&&validDate(deadline)&&(old==null||parsed==null||parsed>=old.paid)
-    SafeFullscreenDialog(close){
-      Scaffold(modifier=Modifier.fillMaxSize(),contentWindowInsets=WindowInsets(0,0,0,0),containerColor=MaterialTheme.colorScheme.background,
-        topBar={TopAppBar(windowInsets=WindowInsets(0,0,0,0),title={Text(if(old==null)"Новый заказ" else "Редактировать",fontWeight=FontWeight.Bold)},navigationIcon={IconButton(onClick=close){Icon(Icons.Default.Close,"Закрыть")}})},
-        bottomBar={Surface(shadowElevation=2.dp){Column(Modifier.fillMaxWidth().padding(16.dp)){
-            Button(enabled=valid,onClick={
+    val focus=LocalFocusManager.current
+    val keyboard=LocalSoftwareKeyboardController.current
+    AdaptiveActionScreen(title=if(old==null)"Новый заказ" else "Редактировать",close=close,action={
+        Button(enabled=valid,onClick={
                 val d=if(state.deadlineLabel!=null)deadline.trim().takeIf{it.isNotEmpty()}else null
                 val o=old?.copy(name=name.trim(),store=store.trim(),price=parsed,deadline=d,point=point.trim(),link=link.trim(),note=note.trim(),category=category.trim(),pointLat=pointLat,pointLon=pointLon)?:Order(uid(),name.trim(),store.trim(),parsed,if(paid)parsed?:0 else 0,status,d,point.trim(),link.trim(),note.trim(),today(),category=category.trim(),pointLat=pointLat,pointLon=pointLon)
-                save(o)
-            },modifier=Modifier.fillMaxWidth().heightIn(min=52.dp)){Text(if(old==null)"Добавить заказ" else "Сохранить")}
-        }}}
-      ){pad->
-        Column(Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
+                focus.clearFocus();keyboard?.hide();save(o)
+            },modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("save_order")){Text(if(old==null)"Добавить заказ" else "Сохранить")}
+    }){
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal=16.dp,vertical=12.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
             Text("Основное",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
             Text("Название, магазин и текущий статус",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-            Field(name,{name=it},"Название товара")
+            OutlinedTextField(name,{name=it},modifier=Modifier.fillMaxWidth().testTag("order_name"),label={Text("Название товара")},singleLine=true)
             Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(4.dp)){(catalog.filter{it.kind=="store"}.map{it.value}+stores).distinct().take(30).forEach{s->FilterChip(store==s,{if(store!=s){point="";pointLat=null;pointLon=null};store=s},{Text(s)})}}
-            if(store !in stores || advanced)Field(store,{if(store!=it){point="";pointLat=null;pointLon=null};store=it},"Название магазина")
+            if(store !in stores || advanced)OutlinedTextField(store,{if(store!=it){point="";pointLat=null;pointLon=null};store=it},modifier=Modifier.fillMaxWidth().testTag("order_store"),label={Text("Название магазина")},singleLine=true)
             else TextButton(onClick={advanced=true;store="";point="";pointLat=null;pointLon=null}){Text("Другой магазин")}
             Field(price,{price=it},"Стоимость, ₽ (необязательно)",true)
             if(old==null){
@@ -308,7 +313,6 @@ class MainActivity:ComponentActivity(){
             }
             if(duplicate)Row(verticalAlignment=Alignment.CenterVertically){Checkbox(duplicateConfirmed,{duplicateConfirmed=it});Text("Похожий заказ уже есть. Добавить ещё один?")}
         }
-      }
     }
 }
 @Composable private fun Primary(label:String,click:()->Unit){Button(onClick=click,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)){Text(label)}}

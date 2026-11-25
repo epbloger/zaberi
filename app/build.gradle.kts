@@ -14,8 +14,8 @@ android {
   minSdk = 26
   targetSdk = 35
   testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-  versionCode = 101
-  versionName = "1.0.0-rc2"
+  versionCode = 102
+  versionName = "1.0.0-rc3"
   buildConfigField("String","BANNER_ID","\""+configuredBannerId+"\"")
  }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
@@ -38,6 +38,10 @@ dependencies {
  kapt("androidx.room:room-compiler:2.6.1")
  implementation("androidx.work:work-runtime-ktx:2.10.0")
  testImplementation("junit:junit:4.13.2")
+ androidTestImplementation(platform("androidx.compose:compose-bom:2024.12.01"))
+ androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+ androidTestImplementation("androidx.test:rules:1.6.1")
+ debugImplementation("androidx.compose.ui:ui-test-manifest")
  androidTestImplementation("androidx.test.ext:junit:1.2.1")
  androidTestImplementation("androidx.test:runner:1.6.2")
  androidTestImplementation("androidx.test:core-ktx:1.6.1")

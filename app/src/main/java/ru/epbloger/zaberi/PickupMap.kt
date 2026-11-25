@@ -31,6 +31,10 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -123,7 +127,10 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
 @Composable fun PickupSelector(store:String,address:String,lat:Double?,lon:Double?,catalog:List<CatalogEntry>,change:(String,Double?,Double?)->Unit){
     var chooser by rememberSaveable{mutableStateOf(false)}
     var manual by rememberSaveable{mutableStateOf(false)}
-    var map by rememberSaveable{mutableStateOf(false)}
+    val openMap=LocalPickupMap.current
+    val focus=LocalFocusManager.current
+    val keyboard=LocalSoftwareKeyboardController.current
+    fun showMap(){focus.clearFocus();keyboard?.hide();openMap(PickupMapRequest(address,lat,lon,change))}
     var query by rememberSaveable{mutableStateOf("")}
     var draft by rememberSaveable{mutableStateOf("")}
     val saved=catalog.filter{it.kind=="point"&&it.parent.equals(store.trim(),true)}
@@ -141,7 +148,7 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
     }
     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
         OutlinedButton(onClick={draft=address;manual=true},modifier=Modifier.weight(1f)){Text("Вручную")}
-        Button(onClick={map=true},modifier=Modifier.weight(1f)){Icon(Icons.Default.Map,null,Modifier.size(18.dp));Spacer(Modifier.width(5.dp));Text("На карте")}
+        Button(onClick={showMap()},modifier=Modifier.weight(1f).testTag("open_pickup_map")){Icon(Icons.Default.Map,null,Modifier.size(18.dp));Spacer(Modifier.width(5.dp));Text("На карте")}
     }
     if(saved.isNotEmpty())TextButton(onClick={query="";chooser=true}){Text("Сохранённые ПВЗ ("+saved.size+")")}
     if(chooser)AlertDialog(onDismissRequest={chooser=false},title={Text("Выбрать ПВЗ")},text={
@@ -154,17 +161,20 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
                 }
             }
             TextButton(onClick={chooser=false;draft=address;manual=true}){Text("Ввести вручную")}
-            TextButton(onClick={chooser=false;map=true}){Text("Указать на карте")}
+            TextButton(onClick={chooser=false;showMap()}){Text("Указать на карте")}
         }
     },confirmButton={TextButton(onClick={chooser=false}){Text("Закрыть")}})
     if(manual)AlertDialog(onDismissRequest={manual=false},title={Text("Адрес пункта выдачи")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
         OutlinedTextField(draft,{draft=it},label={Text("Адрес или название")},modifier=Modifier.fillMaxWidth())
         if(lat!=null)Text("При ручном изменении адреса точка на карте будет сброшена. При необходимости выберите её снова.",style=MaterialTheme.typography.bodySmall)
     }},confirmButton={Button(enabled=draft.isNotBlank()&&draft.length<=200,onClick={change(draft.trim(),if(draft.trim()==address)lat else null,if(draft.trim()==address)lon else null);manual=false}){Text("Сохранить")}},dismissButton={TextButton(onClick={manual=false}){Text("Отмена")}})
-    if(map)MapPicker(address,lat,lon,{map=false}){label,y,x->change(label,y,x);map=false}
 }
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun MapPicker(address:String,lat:Double?,lon:Double?,close:()->Unit,save:(String,Double,Double)->Unit){
+@Composable internal fun MapPicker(address:String,lat:Double?,lon:Double?,close:()->Unit,save:(String,Double,Double)->Unit){
+    BackHandler(onBack=close)
+    val focus=LocalFocusManager.current
+    val keyboard=LocalSoftwareKeyboardController.current
+    var editLabel by rememberSaveable{mutableStateOf(false)}
     val ctx=LocalContext.current
     val scope=rememberCoroutineScope()
     var x by rememberSaveable{mutableDoubleStateOf(lonToX(lon?:0.0))}
@@ -219,25 +229,20 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
             if(images.size>48)images.keys.filter{it !in needed}.take(images.size-48).forEach{images.remove(it)}
         }
     }
-    SafeFullscreenDialog(close){
-        Scaffold(modifier=Modifier.fillMaxSize(),contentWindowInsets=WindowInsets(0,0,0,0),topBar={TopAppBar(windowInsets=WindowInsets(0,0,0,0),title={Text("Выбрать точку")},navigationIcon={IconButton(onClick=close){Icon(Icons.Default.Close,"Закрыть")}})},bottomBar={
-            Surface(shadowElevation=2.dp){
-                Column(Modifier.fillMaxWidth().padding(12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)){
-                    OutlinedTextField(label,{label=it},label={Text("Адрес или название (необязательно)")},singleLine=true,modifier=Modifier.fillMaxWidth())
-                    Button(enabled=zoom>=14&&images.containsKey(center)&&label.length<=200,onClick={
-                        val selectedLat=yToLat(y);val selectedLon=xToLon(x)
-                        val name=label.trim().ifBlank{String.format(Locale.ROOT,"Точка %.6f, %.6f",selectedLat,selectedLon)}
-                        save(name,selectedLat,selectedLon)
-                    },modifier=Modifier.fillMaxWidth()){Text("Сохранить точку")}
-                    if(zoom<14)Text("Приблизьте карту до нужного здания.",style=MaterialTheme.typography.bodySmall)
-                }
-            }
-        }){pad->
-            Column(Modifier.fillMaxSize().padding(pad)){
+    AdaptiveActionScreen(title="Выбрать точку",close=close,action={
+        Button(enabled=zoom>=14&&images.containsKey(center)&&label.length<=200,onClick={
+            val selectedLat=yToLat(y);val selectedLon=xToLon(x)
+            val name=label.trim().ifBlank{String.format(Locale.ROOT,"Точка %.6f, %.6f",selectedLat,selectedLon)}
+            focus.clearFocus();keyboard?.hide();save(name,selectedLat,selectedLon)
+        },modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("save_pickup")){Text("Сохранить точку")}
+    }){
+        BoxWithConstraints(Modifier.fillMaxSize()){
+            val compact=maxHeight<350.dp
+            Column(Modifier.fillMaxSize()){
                 Row(Modifier.fillMaxWidth().padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically){
-                    OutlinedTextField(search,{search=it},singleLine=true,label={Text("Город или адрес")},modifier=Modifier.weight(1f))
+                    OutlinedTextField(search,{search=it},singleLine=true,label={Text("Город или адрес")},modifier=Modifier.weight(1f).testTag("map_search"))
                     IconButton(enabled=search.isNotBlank()&&!searching,onClick={
-                        searching=true;searchError="";results=emptyList()
+                        focus.clearFocus();keyboard?.hide();searching=true;searchError="";results=emptyList()
                         val q=search.trim().take(200)
                         scope.launch{
                             try{
@@ -250,14 +255,17 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
                         }
                     }){Icon(Icons.Default.Search,"Найти адрес")}
                 }
-                if(locationMessage.isNotBlank())Text(locationMessage,Modifier.padding(horizontal=12.dp,vertical=4.dp),style=MaterialTheme.typography.bodySmall)
+                if(!compact&&locationMessage.isNotBlank())Text(locationMessage,Modifier.padding(horizontal=12.dp,vertical=4.dp),style=MaterialTheme.typography.bodySmall)
                 if(searching||locating)LinearProgressIndicator(Modifier.fillMaxWidth())
                 if(searchError.isNotBlank())Text(searchError,Modifier.padding(horizontal=12.dp),style=MaterialTheme.typography.bodySmall)
-                if(results.isNotEmpty())LazyColumn(Modifier.heightIn(max=140.dp)){items(results){a->
+                if(results.isNotEmpty())LazyColumn(Modifier.heightIn(max=if(compact)72.dp else 140.dp)){items(results){a->
                     val title=a.getAddressLine(0)?:a.locality?:search
                     ListItem(headlineContent={Text(title)},modifier=Modifier.clickable{x=lonToX(a.longitude);y=latToY(a.latitude);zoom=17;if(label.isBlank())label=title.take(200);results=emptyList()})
                 }}
-                Text("Перемещайте карту или нажмите на нужное здание.",Modifier.padding(12.dp),style=MaterialTheme.typography.bodySmall)
+                if(!compact)Row(Modifier.fillMaxWidth().padding(horizontal=8.dp),verticalAlignment=Alignment.CenterVertically){
+                    Text(if(zoom<14)"Приблизьте карту до здания" else "Нажмите на нужное здание",Modifier.weight(1f),style=MaterialTheme.typography.bodySmall,maxLines=2)
+                    TextButton(onClick={editLabel=true}){Text("Название")}
+                }
                 Box(Modifier.fillMaxWidth().weight(1f).background(Color(0xFFE5E9E5))){
                     Canvas(Modifier.fillMaxSize().onSizeChanged{size=it}.pointerInput(tilePx){
                         detectTapGestures{tap->val n=(1 shl zoom).toDouble();x=wrapX(x+(tap.x-this.size.width/2f)/(tilePx*n));y=(y+(tap.y-this.size.height/2f)/(tilePx*n)).coerceIn(0.0,1.0)}
@@ -297,8 +305,9 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
                     if(loading)LinearProgressIndicator(Modifier.align(Alignment.TopCenter).fillMaxWidth())
                     if(failed&&!loading)FilledTonalButton(onClick={retry++},modifier=Modifier.align(Alignment.TopCenter).padding(8.dp)){Text("Повторить загрузку")}
                 }
-                TextButton(onClick={runCatching{ctx.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://www.openstreetmap.org/copyright")))}}){Text("© OpenStreetMap contributors",style=MaterialTheme.typography.labelSmall)}
+                Text("© OpenStreetMap contributors",Modifier.fillMaxWidth().clickable{runCatching{ctx.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://www.openstreetmap.org/copyright")))}}.padding(6.dp),style=MaterialTheme.typography.labelSmall)
             }
         }
     }
+    if(editLabel)AlertDialog(onDismissRequest={editLabel=false},title={Text("Название ПВЗ")},text={OutlinedTextField(label,{if(it.length<=200)label=it},label={Text("Адрес или название")},modifier=Modifier.fillMaxWidth())},confirmButton={TextButton(onClick={editLabel=false}){Text("Готово")}})
 }
