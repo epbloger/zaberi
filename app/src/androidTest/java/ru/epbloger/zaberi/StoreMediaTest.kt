@@ -62,12 +62,15 @@ class StoreMediaTest {
         compose.onNodeWithText("Беспроводные наушники").performClick()
         capture("02-order-details")
         compose.onNodeWithContentDescription("Назад").performClick()
-        compose.onNodeWithContentDescription("Календарь").performClick()
+        compose.waitUntil(timeoutMillis=10000) { compose.onAllNodesWithText("Календарь",useUnmergedTree=true).fetchSemanticsNodes().isNotEmpty() }
+        compose.onAllNodesWithText("Календарь",useUnmergedTree=true).onFirst().performTouchInput { click() }
         capture("03-calendar")
-        compose.onNodeWithContentDescription("Статистика").performClick()
+        compose.waitUntil(timeoutMillis=10000) { compose.onAllNodesWithText("Статистика",useUnmergedTree=true).fetchSemanticsNodes().isNotEmpty() }
+        compose.onAllNodesWithText("Статистика",useUnmergedTree=true).onFirst().performTouchInput { click() }
         compose.onNodeWithTag("stats_expenses").assertIsDisplayed()
         capture("04-statistics")
-        compose.onNodeWithContentDescription("Настройки").performClick()
+        compose.waitUntil(timeoutMillis=10000) { compose.onAllNodesWithText("Настройки",useUnmergedTree=true).fetchSemanticsNodes().isNotEmpty() }
+        compose.onAllNodesWithText("Настройки",useUnmergedTree=true).onFirst().performTouchInput { click() }
         capture("05-settings")
     }
 }
