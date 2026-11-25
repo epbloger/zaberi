@@ -14,6 +14,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -93,8 +94,8 @@ class MainActivity:ComponentActivity(){
     val notificationPermission=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()){granted->if(granted)Reminders.enqueue(ctx)}
     var notificationPrompt by rememberSaveable{mutableStateOf(false)}
     LaunchedEffect(Unit){vm.errors.collect{snack.showSnackbar(it)}}
-    LaunchedEffect(shared){if(shared!=null){imported=shared;add=true;consume()}}
-    LaunchedEffect(openId,orders){if(openId!=null&&orders.any{it.id==openId}){selected=openId;consumeId()}}
+    LaunchedEffect(shared){if(shared!=null){selected=null;editing=false;settingsPage="";tab=0;imported=shared;add=true;consume()}}
+    LaunchedEffect(openId,orders){if(openId!=null&&orders.any{it.id==openId}){add=false;editing=false;settingsPage="";tab=0;selected=openId;consumeId()}}
     val order=orders.firstOrNull{it.id==selected}
     BackHandler(enabled=add||editing||order!=null||settingsPage.isNotEmpty()||searchVisible){if(add)add=false else if(editing)editing=false else if(order!=null)selected=null else if(settingsPage.isNotEmpty())settingsPage=if(settingsPage in listOf("Конфиденциальность","Условия использования","Реклама и сторонние сервисы","Разработчик и контакты"))"Юридическая информация" else "" else searchVisible=false}
     val nav=listOf("Заказы","Календарь","Статистика","Настройки")
@@ -506,7 +507,7 @@ class MainActivity:ComponentActivity(){
 
             }
             "Справочники"->CatalogSettings(catalog,vm,initialExpanded=true)
-            "Мои данные"->{BackupPanel();ClearLocalData(vm)}
+            "Мои данные"->{BackupPanel();MapCacheSettings();ClearLocalData(vm)}
             "Реклама"->AdsSettings(preferences)
             "Юридическая информация"->LegalMenu(open)
             "Конфиденциальность","Условия использования","Реклама и сторонние сервисы","Разработчик и контакты"->LegalDocument(page)
@@ -647,4 +648,12 @@ class MainActivity:ComponentActivity(){
     Text("Можно очистить все заказы, фото, историю, финансовые операции и сохранённые справочники. Ранее экспортированные файлы останутся в выбранных местах.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
     OutlinedButton(onClick={confirm=true},modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Delete,null,tint=MaterialTheme.colorScheme.error);Spacer(Modifier.width(8.dp));Text("Удалить все данные заказов",color=MaterialTheme.colorScheme.error)}
     if(confirm)AlertDialog(onDismissRequest={confirm=false},title={Text("Удалить все заказы?")},text={Text("Это действие нельзя отменить без резервной копии. Настройки оформления и уведомлений сохранятся.")},confirmButton={TextButton(onClick={vm.clearData();confirm=false}){Text("Удалить всё",color=MaterialTheme.colorScheme.error)}},dismissButton={TextButton(onClick={confirm=false}){Text("Отмена")}})
+}
+
+@Composable private fun MapCacheSettings(){
+    val ctx=LocalContext.current
+    val scope=rememberCoroutineScope()
+    var cleared by remember{mutableStateOf(false)}
+    OutlinedButton(onClick={scope.launch{withContext(kotlinx.coroutines.Dispatchers.IO){clearPickupMapCache(ctx)};cleared=true}},modifier=Modifier.fillMaxWidth()){Text("Очистить кэш карты")}
+    if(cleared)Text("Кэш карты очищен. Сохранённые ПВЗ не изменились.",style=MaterialTheme.typography.bodySmall)
 }

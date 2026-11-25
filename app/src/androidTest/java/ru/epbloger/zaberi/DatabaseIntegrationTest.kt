@@ -51,6 +51,16 @@ class DatabaseIntegrationTest {
         dao.clearCatalog()
         assertTrue(dao.allCatalog().isEmpty())
     }
+    @Test fun pickupCoordinatesAreSaved()=runBlocking{
+        val dao=db.orders();val o=order("map-test").copy(pointLat=56.84,pointLon=60.61)
+        dao.insert(o)
+        dao.remember(CatalogEntry("pickup","point",o.store,o.point,56.84,60.61))
+        assertEquals(56.84,dao.get(o.id)!!.pointLat!!,0.000001)
+        assertEquals(60.61,dao.allCatalog().single().pointLon!!,0.000001)
+        dao.updatePoint(o.store,o.point,55.75,37.62)
+        assertEquals(37.62,dao.allCatalog().single().pointLon!!,0.000001)
+        assertEquals(60.61,dao.get(o.id)!!.pointLon!!,0.000001)
+    }
     @Test fun partialRefundLedger()=runBlocking{
         val dao=db.orders();val o=order("refund-test").copy(status=Status.REFUND.name,expectedRefund=8000,receivedRefund=3000,returned=true)
         db.withTransaction{dao.insert(o);dao.transaction(Transaction("paid",o.id,"2026-11-20",10000));dao.transaction(Transaction("refund1",o.id,"2026-11-21",-3000))}

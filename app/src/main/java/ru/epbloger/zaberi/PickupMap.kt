@@ -9,6 +9,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -35,6 +36,11 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.*
 import okhttp3.Cache
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.Response
+import java.io.IOException
+import kotlin.coroutines.resume
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -62,21 +68,37 @@ private object MapTiles {
             .followRedirects(false).followSslRedirects(false)
             .build().also{client=it}
     }
-    suspend fun image(context:Context,tile:Tile):ImageBitmap?=withContext(Dispatchers.IO){
+    suspend fun image(context:Context,tile:Tile):ImageBitmap?=suspendCancellableCoroutine { continuation->
         val request=Request.Builder().url("https://tile.openstreetmap.org/"+tile.z+"/"+tile.x+"/"+tile.y+".png")
             .header("User-Agent","Zaberi/1.0 (+https://github.com/epbloger/zaberi)").build()
-        try{
-            http(context).newCall(request).execute().use{response->
-                if(!response.isSuccessful)return@withContext null
-                val body=response.body?:return@withContext null
-                val buffer=body.source()
-                if(buffer.request(1024L*1024L+1L))return@withContext null
-                val bytes=buffer.readByteArray()
-                BitmapFactory.decodeByteArray(bytes,0,bytes.size)?.asImageBitmap()
+        val call=http(context).newCall(request)
+        continuation.invokeOnCancellation{call.cancel()}
+        call.enqueue(object:Callback{
+            override fun onFailure(call:Call,e:IOException){if(continuation.isActive)continuation.resume(null)}
+            override fun onResponse(call:Call,response:Response){
+                val image=try{
+                    response.use{r->
+                        if(!r.isSuccessful||!continuation.isActive)null
+                        else r.body?.let{body->
+                            val source=body.source()
+                            if(source.request(1024L*1024L+1L))null
+                            else{
+                                val bytes=source.readByteArray()
+                                val options=BitmapFactory.Options().apply{inJustDecodeBounds=true}
+                                BitmapFactory.decodeByteArray(bytes,0,bytes.size,options)
+                                if(options.outWidth!=256||options.outHeight!=256)null else BitmapFactory.decodeByteArray(bytes,0,bytes.size)?.asImageBitmap()
+                            }
+                        }
+                    }
+                }catch(e:Exception){null}
+                if(continuation.isActive)continuation.resume(image)
             }
-        }catch(e:java.io.IOException){null}
+        })
     }
+    fun clear(context:Context){runCatching{http(context).cache?.evictAll()}}
+
 }
+fun clearPickupMapCache(context:Context){MapTiles.clear(context)}
 private fun visibleTiles(x:Double,y:Double,z:Int,size:IntSize,tilePx:Float):List<VisibleTile>{
     if(size.width<=0||size.height<=0)return emptyList()
     val n=1 shl z
@@ -144,7 +166,7 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
     var x by rememberSaveable{mutableDoubleStateOf(lonToX(lon?:0.0))}
     var y by rememberSaveable{mutableDoubleStateOf(latToY(lat?:30.0))}
     var zoom by rememberSaveable{mutableIntStateOf(if(lat!=null&&lon!=null)17 else 2)}
-    var search by rememberSaveable{mutableStateOf("")}
+    var search by rememberSaveable{mutableStateOf(if(lat==null)address else "")}
     var label by rememberSaveable{mutableStateOf(address)}
     var searching by remember{mutableStateOf(false)}
     var searchError by remember{mutableStateOf("")}
@@ -208,11 +230,13 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
                 if(searchError.isNotBlank())Text(searchError,Modifier.padding(horizontal=12.dp),style=MaterialTheme.typography.bodySmall)
                 if(results.isNotEmpty())LazyColumn(Modifier.heightIn(max=140.dp)){items(results){a->
                     val title=a.getAddressLine(0)?:a.locality?:search
-                    ListItem(headlineContent={Text(title)},modifier=Modifier.clickable{x=lonToX(a.longitude);y=latToY(a.latitude);zoom=16;results=emptyList()})
+                    ListItem(headlineContent={Text(title)},modifier=Modifier.clickable{x=lonToX(a.longitude);y=latToY(a.latitude);zoom=17;if(label.isBlank())label=title.take(200);results=emptyList()})
                 }}
-                Text("Перемещайте карту, чтобы метка оказалась над ПВЗ.",Modifier.padding(12.dp),style=MaterialTheme.typography.bodySmall)
+                Text("Перемещайте карту или нажмите на нужное здание.",Modifier.padding(12.dp),style=MaterialTheme.typography.bodySmall)
                 Box(Modifier.fillMaxWidth().weight(1f).background(Color(0xFFE5E9E5))){
                     Canvas(Modifier.fillMaxSize().onSizeChanged{size=it}.pointerInput(tilePx){
+                        detectTapGestures{tap->val n=(1 shl zoom).toDouble();x=wrapX(x+(tap.x-this.size.width/2f)/(tilePx*n));y=(y+(tap.y-this.size.height/2f)/(tilePx*n)).coerceIn(0.0,1.0)}
+                    }.pointerInput(tilePx){
                         var accumulated=1f
                         detectTransformGestures{_,pan,scale,_->
                             val n=(1 shl zoom).toDouble()
@@ -230,7 +254,7 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
                             drawImage(bitmap,dstOffset=IntOffset(left,top),dstSize=IntSize(tilePx.roundToInt()+1,tilePx.roundToInt()+1))
                         }
                     }
-                    Icon(Icons.Default.LocationOn,"Выбранная точка",Modifier.align(Alignment.Center).offset(y=(-20).dp).size(40.dp),tint=Color(0xFFB42318))
+                    Icon(Icons.Default.LocationOn,"Выбранная точка",Modifier.align(Alignment.Center).offset(y=(-17).dp).size(40.dp),tint=Color(0xFFB42318))
                     Column(Modifier.align(Alignment.CenterEnd).padding(8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
                         FilledTonalIconButton(onClick={zoom=(zoom+1).coerceAtMost(19)},enabled=zoom<19){Icon(Icons.Default.Add,"Приблизить")}
                         FilledTonalIconButton(onClick={zoom=(zoom-1).coerceAtLeast(2)},enabled=zoom>2){Icon(Icons.Default.Remove,"Отдалить")}

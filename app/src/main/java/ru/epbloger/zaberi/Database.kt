@@ -67,7 +67,7 @@ abstract class ZaberiDb: RoomDatabase() {
                 db.execSQL("INSERT OR IGNORE INTO catalog SELECT lower(hex(randomblob(16))), 'point', store, point FROM orders WHERE trim(point) <> '' GROUP BY store,point")
             }
         }
-        private val MIGRATION_3_4=object:Migration(3,4){
+        internal val MIGRATION_3_4=object:Migration(3,4){
             override fun migrate(db:SupportSQLiteDatabase){
                 db.execSQL("ALTER TABLE orders ADD COLUMN pointLat REAL")
                 db.execSQL("ALTER TABLE orders ADD COLUMN pointLon REAL")

@@ -112,6 +112,11 @@ object PrivateFiles{
                 require(c.id.isNotBlank()&&c.kind in listOf("store","point","category")&&c.value.isNotBlank()&&c.value.length<=200&&(c.kind!="point"||c.parent.isNotBlank()))
             }
         }
+        require(transactions.map{it.id}.toSet().size==transactions.size)
+        require(histories.map{it.id}.toSet().size==histories.size)
+        require(photos.map{it.id}.toSet().size==photos.size)
+        require(catalog.map{it.id}.toSet().size==catalog.size)
+        require(catalog.map{Triple(it.kind,it.parent,it.value)}.toSet().size==catalog.size)
         val groups=transactions.groupBy{it.orderId}
         orders.forEach{o->val t=groups[o.id].orEmpty();require(t.filter{it.amount>0}.sumOf{it.amount}==o.paid&&-t.filter{it.amount<0}.sumOf{it.amount}==o.receivedRefund)}
         val db=ZaberiDb.get(context);val d=db.orders()
