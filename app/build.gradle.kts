@@ -8,6 +8,8 @@ val configuredBannerId = providers.gradleProperty("zaberiBannerId").orElse("").g
 require(configuredBannerId.isEmpty() || Regex("R-M-[0-9]+-[0-9]+").matches(configuredBannerId)) { "Invalid advertising block identifier" }
 val configuredInterstitialId = providers.gradleProperty("zaberiInterstitialId").orElse("").get()
 require(configuredInterstitialId.isEmpty() || Regex("R-M-[0-9]+-[0-9]+").matches(configuredInterstitialId)) { "Invalid interstitial block identifier" }
+val storeAge = providers.gradleProperty("zaberiStoreAge").orElse("0").get()
+require(storeAge in listOf("0", "6", "12", "16", "18")) { "Invalid RuStore age category" }
 val demoInterstitial = providers.gradleProperty("zaberiDemoInterstitial").orElse("false").get().toBoolean()
 // Distribution APKs are intentionally unsigned. The permanent key never enters CI.
 val distributionCandidate = providers.gradleProperty("zaberiDistributionCandidate").orElse("false").get().toBoolean()
@@ -24,6 +26,7 @@ android {
   testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   versionCode = 111
   versionName = "1.0.3"
+  buildConfigField("int","STORE_AGE",storeAge)
   buildConfigField("String","BANNER_ID","\""+configuredBannerId+"\"")
   buildConfigField("String","INTERSTITIAL_ID","\""+configuredInterstitialId+"\"")
  }
