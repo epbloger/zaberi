@@ -112,7 +112,7 @@ class MainActivity:ComponentActivity(){
         floatingActionButton={if(order==null&&tab==0)ExtendedFloatingActionButton(onClick={imported="";add=true},icon={Icon(Icons.Default.Add,null)},text={Text("Добавить заказ")})}
     ){pad->
         Box(Modifier.fillMaxSize().padding(pad)){
-            when{order!=null->Detail(order,history.filter{it.orderId==order.id},vm,{selected=null});tab==0->Orders(orders,{selected=it.id},{vm.act(it.id,"received")},searchVisible,{imported="";add=true});tab==1->CalendarPage(orders,{selected=it.id});tab==2->Stats(orders,tx);else->SettingsPage(preferences,catalog,vm,settingsPage,{settingsPage=it})}
+            when{order!=null->Detail(order,history.filter{it.orderId==order.id},vm,{selected=null});tab==0->Orders(orders,{selected=it.id},{vm.act(it.id,"received")},searchVisible,{imported="";add=true},preferences.adsEnabled);tab==1->CalendarPage(orders,{selected=it.id});tab==2->Stats(orders,tx);else->SettingsPage(preferences,catalog,vm,settingsPage,{settingsPage=it})}
         }
     }
     if(add)OrderForm(null,imported,catalog,orders,{add=false}){o->vm.add(o);add=false;tab=0;if(o.deadline!=null&&preferences.enabled&&Build.VERSION.SDK_INT>=33&&ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)notificationPrompt=true}
@@ -125,7 +125,7 @@ class MainActivity:ComponentActivity(){
         Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(6.dp)){Text(label,style=MaterialTheme.typography.labelMedium);Text(value,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)}
     }
 }
-@Composable private fun Orders(orders:List<Order>,open:(Order)->Unit,received:(Order)->Unit,searchVisible:Boolean,addOrder:()->Unit){
+@Composable private fun Orders(orders:List<Order>,open:(Order)->Unit,received:(Order)->Unit,searchVisible:Boolean,addOrder:()->Unit,adsEnabled:Boolean){
     var filter by rememberSaveable{mutableStateOf("Активные")}
     var query by rememberSaveable{mutableStateOf("")}
     var shop by rememberSaveable{mutableStateOf("")}
@@ -150,6 +150,7 @@ class MainActivity:ComponentActivity(){
                 items(group,key={it.id}){o->OrderCard(o,if(o.state==Status.READY){{confirmId=o.id}}else null){open(o)}}
             }
         }else items(visible,key={it.id}){o->OrderCard(o,if(o.state==Status.READY){{confirmId=o.id}}else null){open(o)}}
+        if(adsEnabled&&visible.isNotEmpty()&&BuildConfig.BANNER_ID.isNotBlank())item(key="banner"){OptionalBanner()}
         item{Spacer(Modifier.height(72.dp))}
     }
     val pending=orders.firstOrNull{it.id==confirmId}
@@ -360,51 +361,102 @@ class MainActivity:ComponentActivity(){
 @Composable private fun CalendarPage(orders:List<Order>,open:(Order)->Unit){
     var monthString by rememberSaveable{mutableStateOf(YearMonth.now().toString())}
     var dayString by rememberSaveable{mutableStateOf(today())}
+    var upcoming by rememberSaveable{mutableStateOf(false)}
     val month=YearMonth.parse(monthString)
-    val active=orders.filter{!it.state.archived&&it.deadline!=null}
+    val now=LocalDate.now()
+    val active=orders.filter{!it.state.archived&&it.deadline!=null}.sortedBy{it.deadline}
+    val byDay=active.groupBy{it.deadline}
     val offset=month.atDay(1).dayOfWeek.value-1
-    LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
-        item{
-            Row(verticalAlignment=Alignment.CenterVertically){
-                IconButton(onClick={monthString=month.minusMonths(1).toString();dayString=month.minusMonths(1).atDay(1).toString()}){Icon(Icons.Default.ChevronLeft,"Предыдущий месяц")}
-                Text(month.format(DateTimeFormatter.ofPattern("LLLL yyyy",Locale("ru"))),Modifier.weight(1f),style=MaterialTheme.typography.titleLarge)
-                IconButton(onClick={monthString=month.plusMonths(1).toString();dayString=month.plusMonths(1).atDay(1).toString()}){Icon(Icons.Default.ChevronRight,"Следующий месяц")}
-            }
-            Row{listOf("Пн","Вт","Ср","Чт","Пт","Сб","Вс").forEach{Box(Modifier.weight(1f),contentAlignment=Alignment.Center){Text(it)}}}
-            repeat(6){r->Row{repeat(7){c->
-                val n=r*7+c-offset+1
-                if(n in 1..month.lengthOfMonth()){
-                    val d=month.atDay(n).toString()
-                    Surface(modifier=Modifier.weight(1f).aspectRatio(1f).padding(2.dp).clickable{dayString=d},shape=RoundedCornerShape(10.dp),color=if(dayString==d)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface){
-                        Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){Text(n.toString());if(active.any{it.deadline==d})Text("•",color=MaterialTheme.colorScheme.primary)}
+    LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(14.dp)){
+        item{Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){FilterChip(!upcoming,{upcoming=false},{Text("Календарь")});FilterChip(upcoming,{upcoming=true},{Text("Все сроки")})}}
+        if(!upcoming){
+            item{
+                OutlinedCard(shape=RoundedCornerShape(24.dp),colors=CardDefaults.outlinedCardColors(containerColor=MaterialTheme.colorScheme.surface)){
+                    Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)){
+                        Row(verticalAlignment=Alignment.CenterVertically){
+                            IconButton(onClick={monthString=month.minusMonths(1).toString();dayString=month.minusMonths(1).atDay(1).toString()}){Icon(Icons.Default.ChevronLeft,"Предыдущий месяц")}
+                            Text(month.format(DateTimeFormatter.ofPattern("LLLL yyyy",Locale("ru"))).replaceFirstChar{it.titlecase(Locale("ru"))},Modifier.weight(1f),style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold,textAlign=androidx.compose.ui.text.style.TextAlign.Center)
+                            IconButton(onClick={monthString=month.plusMonths(1).toString();dayString=month.plusMonths(1).atDay(1).toString()}){Icon(Icons.Default.ChevronRight,"Следующий месяц")}
+                        }
+                        Row{listOf("Пн","Вт","Ср","Чт","Пт","Сб","Вс").forEach{Box(Modifier.weight(1f),contentAlignment=Alignment.Center){Text(it,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)}}}
+                        repeat((offset+month.lengthOfMonth()+6)/7){r->Row{repeat(7){c->
+                            val n=r*7+c-offset+1
+                            if(n in 1..month.lengthOfMonth()){
+                                val date=month.atDay(n);val ds=date.toString();val count=byDay[ds]?.size?:0
+                                val selected=dayString==ds
+                                Surface(modifier=Modifier.weight(1f).aspectRatio(.85f).padding(2.dp).clickable{dayString=ds},shape=RoundedCornerShape(12.dp),color=if(selected)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,border=if(date==now)BorderStroke(1.dp,MaterialTheme.colorScheme.primary)else null){
+                                    Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){
+                                        Text(n.toString(),fontWeight=if(selected||date==now)FontWeight.Bold else FontWeight.Normal,color=if(selected)MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
+                                        if(count>0)Text(if(count>9)"9+" else count.toString(),style=MaterialTheme.typography.labelSmall,color=if(date.isBefore(now))MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                                    }
+                                }
+                            }else Spacer(Modifier.weight(1f).aspectRatio(.85f))
+                        }}}
+                        TextButton(onClick={monthString=YearMonth.now().toString();dayString=today()},modifier=Modifier.align(Alignment.End)){Text("Сегодня")}
                     }
-                }else Spacer(Modifier.weight(1f).aspectRatio(1f))
-            }}}
+                }
+            }
+            item{Text(dateText(dayString),style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)}
+            val selected=byDay[dayString].orEmpty()
+            if(selected.isEmpty())item{Text("На этот день нет сроков.",color=MaterialTheme.colorScheme.onSurfaceVariant)}
+            items(selected,key={it.id}){OrderCard(it){open(it)}}
+        }else{
+            if(active.isEmpty())item{Text("Нет заказов с указанным сроком.",color=MaterialTheme.colorScheme.onSurfaceVariant)}
+            active.groupBy{it.deadline}.forEach{(date,group)->
+                item(key="day:"+date){Text(dateText(date),style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold,color=if(date!=null&&date<today())MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)}
+                items(group,key={it.id}){OrderCard(it){open(it)}}
+            }
         }
-        item{Text(dateText(dayString),style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)}
-        val dayOrders=active.filter{it.deadline==dayString}
-        if(dayOrders.isEmpty())item{Text("На этот день ничего не запланировано")}
-        items(dayOrders,key={it.id}){OrderCard(it){open(it)}}
     }
 }
 @Composable private fun Stats(orders:List<Order>,tx:List<Transaction>){
     var period by rememberSaveable{mutableStateOf("Месяц")}
+    var offset by rememberSaveable{mutableIntStateOf(0)}
+    var grouping by rememberSaveable{mutableStateOf("Магазины")}
+    var showOperations by rememberSaveable{mutableStateOf(false)}
     val now=LocalDate.now()
-    val subset=tx.filter{when(period){"Месяц"->it.date.startsWith(now.toString().take(7));"Год"->it.date.startsWith(now.year.toString());else->true}}
+    val month=YearMonth.from(now).plusMonths(offset.toLong())
+    val year=now.year+offset
+    val subset=tx.filter{when(period){"Месяц"->it.date.startsWith(month.toString());"Год"->it.date.startsWith(year.toString());else->true}}
     val spent=subset.filter{it.amount>0}.sumOf{it.amount}
     val refund=-subset.filter{it.amount<0}.sumOf{it.amount}
     val pending=orders.filter{it.state==Status.REFUND}.sumOf{remaining(it.expectedRefund,it.receivedRefund)}
+    val index=orders.associateBy{it.id}
+    val groups=subset.groupBy{t->if(grouping=="Магазины")index[t.orderId]?.store?:"Другой" else index[t.orderId]?.category?.ifBlank{"Без категории"}?:"Без категории"}.mapValues{(_,v)->v.sumOf{it.amount}}.toList().sortedByDescending{it.second}
+    val largest=groups.maxOfOrNull{kotlin.math.abs(it.second)}?.coerceAtLeast(1L)?:1L
     LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
-        item{Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("Месяц","Год","Всё время").forEach{FilterChip(period==it,{period=it},{Text(it)})}}}
-        item{Metric("Фактические расходы",money(spent-refund),Modifier.fillMaxWidth(),true)}
-        item{Row(horizontalArrangement=Arrangement.spacedBy(12.dp)){Metric("Оплачено",money(spent),Modifier.weight(1f));Metric("Возвращено",money(refund),Modifier.weight(1f))}}
-        item{Metric("Ожидаются возвраты (все заказы)",money(pending),Modifier.fillMaxWidth())}
-        item{Text("По магазинам",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)}
-        val byStore=subset.groupBy{t->orders.firstOrNull{it.id==t.orderId}?.store?:"Другой"}.mapValues{(_,v)->v.sumOf{it.amount}}.toList().sortedByDescending{it.second}
-        items(byStore){(store,total)->Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(store);Text(money(total),fontWeight=FontWeight.SemiBold)}}
-        item{Text("По категориям",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)}
-        val byCategory=subset.groupBy{t->orders.firstOrNull{it.id==t.orderId}?.category?.ifBlank{"Без категории"}?:"Без категории"}.mapValues{(_,v)->v.sumOf{it.amount}}.toList().sortedByDescending{it.second}
-        items(byCategory){(category,total)->Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(category);Text(money(total),fontWeight=FontWeight.SemiBold)}}
+        item{Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("Месяц","Год","Всё время").forEach{FilterChip(period==it,{period=it;offset=0},{Text(it)})}}}
+        if(period!="Всё время")item{Row(verticalAlignment=Alignment.CenterVertically){
+            IconButton(onClick={if(offset> -1200)offset--}){Icon(Icons.Default.ChevronLeft,"Предыдущий период")}
+            Text(if(period=="Месяц")month.format(DateTimeFormatter.ofPattern("LLLL yyyy",Locale("ru"))).replaceFirstChar{it.titlecase(Locale("ru"))}else year.toString(),Modifier.weight(1f),style=MaterialTheme.typography.titleMedium,textAlign=androidx.compose.ui.text.style.TextAlign.Center)
+            IconButton(onClick={offset++},enabled=offset<0){Icon(Icons.Default.ChevronRight,"Следующий период")}
+        }}
+        item{Card(modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(24.dp),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer)){
+            Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
+                Text("Фактические расходы",style=MaterialTheme.typography.labelLarge)
+                Text(money(spent-refund),style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
+                Text("Оплата минус полученные возвраты за период",style=MaterialTheme.typography.bodySmall)
+            }
+        }}
+        item{Row(horizontalArrangement=Arrangement.spacedBy(10.dp)){Metric("Оплачено",money(spent),Modifier.weight(1f));Metric("Возвращено",money(refund),Modifier.weight(1f))}}
+        item{Metric("Ожидаются возвраты · все заказы",money(pending),Modifier.fillMaxWidth())}
+        item{Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("Магазины","Категории").forEach{FilterChip(grouping==it,{grouping=it},{Text(it)})}}}
+        if(groups.isEmpty())item{Text("Нет операций за выбранный период.",color=MaterialTheme.colorScheme.onSurfaceVariant)}
+        items(groups){(label,total)->
+            OutlinedCard(shape=RoundedCornerShape(18.dp),colors=CardDefaults.outlinedCardColors(containerColor=MaterialTheme.colorScheme.surface)){
+                Column(Modifier.fillMaxWidth().padding(14.dp),verticalArrangement=Arrangement.spacedBy(9.dp)){
+                    Row(verticalAlignment=Alignment.CenterVertically){Text(label,Modifier.weight(1f),fontWeight=FontWeight.Medium);Text(money(total),fontWeight=FontWeight.Bold)}
+                    LinearProgressIndicator(progress={kotlin.math.abs(total).toFloat()/largest.toFloat()},modifier=Modifier.fillMaxWidth().height(5.dp),color=if(total<0)MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+        item{TextButton(onClick={showOperations=!showOperations}){Text(if(showOperations)"Скрыть операции" else "Показать операции ("+subset.size+")")}}
+        if(showOperations)items(subset.sortedByDescending{it.date},key={it.id}){t->
+            Row(Modifier.fillMaxWidth().padding(vertical=5.dp),verticalAlignment=Alignment.CenterVertically){
+                Column(Modifier.weight(1f)){Text(index[t.orderId]?.name?:"Заказ",maxLines=2,overflow=TextOverflow.Ellipsis);Text(dateText(t.date),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+                Text((if(t.amount<0)"−" else "+")+money(kotlin.math.abs(t.amount)),fontWeight=FontWeight.SemiBold)
+            }
+        }
     }
 }
 @Composable private fun SettingsPage(preferences:Preferences,catalog:List<CatalogEntry>,vm:Model,page:String,open:(String)->Unit){
@@ -424,6 +476,7 @@ class MainActivity:ComponentActivity(){
                 SettingsLink(Icons.Default.Store,"Справочники","Магазины, категории и ПВЗ"){open("Справочники")}
                 SettingsLink(Icons.Default.Backup,"Мои данные","Резервное копирование и CSV"){open("Мои данные")}
                 SettingsLink(Icons.Default.Gavel,"Юридическая информация","Конфиденциальность, условия и реклама"){open("Юридическая информация")}
+                SettingsLink(Icons.Default.Campaign,"Реклама","Управление необязательными объявлениями"){open("Реклама")}
                 SettingsLink(Icons.Default.Info,"О приложении","Версия и обратная связь"){open("О приложении")}
             }
             "Уведомления"->{
@@ -431,6 +484,10 @@ class MainActivity:ComponentActivity(){
         if(preferences.enabled){
             Row(verticalAlignment=Alignment.CenterVertically){Text("Начинать с",Modifier.weight(1f));IconButton(onClick={preferences.hour(preferences.hour-1)},enabled=preferences.hour>7){Icon(Icons.Default.Remove,"Раньше")};Text("%02d:00".format(preferences.hour));IconButton(onClick={preferences.hour(preferences.hour+1)},enabled=preferences.hour<21){Icon(Icons.Default.Add,"Позже")}}
             Row(verticalAlignment=Alignment.CenterVertically){Text("Показывать названия товаров в уведомлениях",Modifier.weight(1f));Switch(preferences.showDetails,{preferences.details(it)})}
+        }
+        if(preferences.enabled){
+            Row(verticalAlignment=Alignment.CenterVertically){Text("Напоминать заранее, дней",Modifier.weight(1f));IconButton(onClick={preferences.leadDays(preferences.leadDays-1)},enabled=preferences.leadDays>0){Icon(Icons.Default.Remove,"Меньше")};Text(preferences.leadDays.toString());IconButton(onClick={preferences.leadDays(preferences.leadDays+1)},enabled=preferences.leadDays<7){Icon(Icons.Default.Add,"Больше")}}
+            Row(verticalAlignment=Alignment.CenterVertically){Text("Повторять после истечения срока",Modifier.weight(1f));Switch(preferences.overdue,{preferences.overdue(it)})}
         }
         Text("Напоминания проверяются в выбранное дневное время. Android может задерживать их при энергосбережении.")
         Primary("Настройки уведомлений"){
@@ -447,11 +504,12 @@ class MainActivity:ComponentActivity(){
             }
             "Справочники"->CatalogSettings(catalog,vm,initialExpanded=true)
             "Мои данные"->{BackupPanel();ClearLocalData(vm)}
+            "Реклама"->AdsSettings(preferences)
             "Юридическая информация"->LegalMenu(open)
             "Конфиденциальность","Условия использования","Реклама и сторонние сервисы","Разработчик и контакты"->LegalDocument(page)
             "О приложении"->{
-                Text("Забери 0.5.0",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
-                Text("Тестовая версия. Заказы хранятся на устройстве. Интернет и учётная запись для основных функций не нужны. Реклама не подключена.")
+                Text("Забери "+BuildConfig.VERSION_NAME,style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
+                Text("Кандидат на релиз. Заказы хранятся на устройстве. Интернет и учётная запись для основных функций не нужны. Реклама необязательна.")
                 SettingsLink(Icons.Default.Feedback,"Обратная связь","Не отправляйте чеки, пароли и личные сведения"){runCatching{ctx.startActivity(Intent(Intent.ACTION_VIEW,android.net.Uri.parse("https://github.com/epbloger/zaberi/issues")))}}
                 SettingsLink(Icons.Default.Gavel,"Юридическая информация","Документы приложения"){open("Юридическая информация")}
             }
@@ -512,7 +570,7 @@ class MainActivity:ComponentActivity(){
     val csv=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")){run(it,"csv")}
     HorizontalDivider()
     Text("Резервное копирование",style=MaterialTheme.typography.titleLarge)
-    Text("Копия заказов, операций, истории и фото защищена паролем. Восстановление заменяет текущие заказы. Пароль восстановить нельзя.")
+    Text("Копия заказов, операций, истории, справочников и фото защищена паролем. Восстановление заменяет текущие заказы. Пароль восстановить нельзя.")
     OutlinedButton(enabled=!busy,onClick={action="export";password="";confirm=""},modifier=Modifier.fillMaxWidth()){Text("Создать защищённую копию")}
     OutlinedButton(enabled=!busy,onClick={action="restore";password="";confirm=""},modifier=Modifier.fillMaxWidth()){Text("Восстановить из копии")}
     OutlinedButton(enabled=!busy,onClick={action="csv"},modifier=Modifier.fillMaxWidth()){Text("Экспорт операций CSV")}

@@ -49,7 +49,7 @@ class Model(app: Application): AndroidViewModel(app) {
         val updated=o.copy(name=name,store=store,price=price,deadline=if(o.state.deadlineLabel!=null) deadline else null,point=point,link=link,note=note,category=category)
         dao.update(updated);rememberValues(updated)
         log(id,"Изменены сведения")
-        getApplication<Application>().getSystemService(android.app.NotificationManager::class.java).cancel(id.hashCode())
+        getApplication<Application>().getSystemService(android.app.NotificationManager::class.java).cancel(id,0)
     }
     fun act(id: String, event: String, deadline: String? = null, amount: Long? = null) = change {
         val o = dao.get(id) ?: error("Заказ не найден")
@@ -60,7 +60,7 @@ class Model(app: Application): AndroidViewModel(app) {
         val actualState = if(state==Status.REFUND && expected==0L) (if(event=="cancel") Status.CANCELLED else Status.DONE) else state
         dao.update(o.copy(status=actualState.name, deadline=if(actualState.deadlineLabel!=null) deadline else null, expectedRefund=expected, receivedRefund=0, cancelled=event=="cancel", returned=o.returned || event=="returned"))
         log(id,actualState.label)
-        getApplication<Application>().getSystemService(android.app.NotificationManager::class.java).cancel(id.hashCode())
+        getApplication<Application>().getSystemService(android.app.NotificationManager::class.java).cancel(id,0)
     }
     fun pay(id: String, amount: Long, operationDate:String=today()) = change {
         val o = dao.get(id) ?: error("Заказ не найден")
@@ -78,7 +78,7 @@ class Model(app: Application): AndroidViewModel(app) {
         val state=if(received==o.expectedRefund) (if(o.cancelled) Status.CANCELLED else Status.DONE) else Status.REFUND
         dao.update(o.copy(receivedRefund=received,status=state.name,deadline=if(state==Status.REFUND) o.deadline else null))
         dao.transaction(Transaction(uid(),id,operationDate,-amount)); log(id,if(state==Status.REFUND) "Частичный возврат" else "Возврат завершён")
-        if(state!=Status.REFUND)getApplication<Application>().getSystemService(android.app.NotificationManager::class.java).cancel(id.hashCode())
+        if(state!=Status.REFUND)getApplication<Application>().getSystemService(android.app.NotificationManager::class.java).cancel(id,0)
     }
     fun adjustRefund(id:String,target:Long,deadline:String?)=change{
         val o=dao.get(id)?:error("Заказ не найден")
@@ -87,7 +87,7 @@ class Model(app: Application): AndroidViewModel(app) {
         val state=if(target==o.receivedRefund){if(o.cancelled)Status.CANCELLED else Status.DONE}else Status.REFUND
         dao.update(o.copy(expectedRefund=target,status=state.name,deadline=if(state==Status.REFUND)deadline else null))
         log(id,"Уточнена сумма ожидаемого возврата")
-        getApplication<Application>().getSystemService(android.app.NotificationManager::class.java).cancel(id.hashCode())
+        getApplication<Application>().getSystemService(android.app.NotificationManager::class.java).cancel(id,0)
     }
     fun clearData()=change{
         dao.clearOrders()
@@ -101,5 +101,5 @@ class Model(app: Application): AndroidViewModel(app) {
         try{PrivateFiles.addPhoto(getApplication(),id,uri)}catch(e:kotlinx.coroutines.CancellationException){throw e}catch(e:Exception){errors.emit("Не удалось добавить фото: "+(e.message?:"ошибка"))}
     }
     fun deletePhoto(id:String)=change{dao.removePhoto(id)}
-    fun remove(id: String) = change { dao.get(id)?.let { dao.delete(it) };getApplication<Application>().getSystemService(android.app.NotificationManager::class.java).cancel(id.hashCode()) }
+    fun remove(id: String) = change { dao.get(id)?.let { dao.delete(it) };getApplication<Application>().getSystemService(android.app.NotificationManager::class.java).cancel(id,0) }
 }

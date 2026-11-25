@@ -16,5 +16,14 @@ class Preferences(private val context:Context) {
     fun enabled(value:Boolean){enabled=value;prefs.edit().putBoolean("enabled",value).apply();if(!value)clear() else Reminders.enqueue(context)}
     fun hour(value:Int){hour=value.coerceIn(7,21);prefs.edit().putInt("hour",hour).apply();Reminders.enqueue(context)}
     fun details(value:Boolean){showDetails=value;prefs.edit().putBoolean("details",value).apply();clear();Reminders.enqueue(context)}
+    var leadDays by mutableIntStateOf(prefs.getInt("leadDays",3).coerceIn(0,7))
+        private set
+    var overdue by mutableStateOf(prefs.getBoolean("overdue",true))
+        private set
+    var adsEnabled by mutableStateOf(prefs.getBoolean("adsEnabled",false))
+        private set
+    fun leadDays(value:Int){leadDays=value.coerceIn(0,7);prefs.edit().putInt("leadDays",leadDays).apply();Reminders.enqueue(context)}
+    fun overdue(value:Boolean){overdue=value;prefs.edit().putBoolean("overdue",value).apply();Reminders.enqueue(context)}
+    fun adsEnabled(value:Boolean){adsEnabled=value;prefs.edit().putBoolean("adsEnabled",value).apply()}
     private fun clear(){context.getSystemService(NotificationManager::class.java).cancelAll()}
 }

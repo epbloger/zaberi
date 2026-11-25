@@ -80,11 +80,12 @@ object PrivateFiles{
             require(result.size<=MAX_PHOTO){"Изображение слишком большое"};result
         }finally{bitmap.recycle()}
         val db=ZaberiDb.get(context)
-        db.withTransaction{val dao=db.orders();require(dao.get(id)!=null);require(dao.photoCount(id)<5){"Не более пяти фото на заказ"};dao.photo(Attachment(uid(),id,bytes))}
+        db.withTransaction{val dao=db.orders();require(dao.get(id)!=null);require(dao.photoCount(id)<5){"Не более пяти фото на заказ"};require(dao.photoBytes()+bytes.size<=20L*1024*1024){"Достигнут общий лимит фотографий (20 МБ)"};dao.photo(Attachment(uid(),id,bytes))}
     }
     suspend fun export(context:Context,uri:Uri,password:String)=withContext(Dispatchers.IO){
         val db=ZaberiDb.get(context);val d=db.orders()
         val snapshot=db.withTransaction{
+            require(d.photoBytes()<=20L*1024*1024){"Слишком много фотографий для одной резервной копии"}
             JSONObject().put("version",3).put("orders",array(d.all().map(::orderJson)))
                 .put("transactions",array(d.allTransactions().map{JSONObject().put("id",it.id).put("order",it.orderId).put("date",it.date).put("amount",it.amount)}))
                 .put("history",array(d.allHistory().map{JSONObject().put("id",it.id).put("order",it.orderId).put("date",it.date).put("label",it.label)}))
@@ -112,7 +113,7 @@ object PrivateFiles{
         orders.forEach{o->val t=groups[o.id].orEmpty();require(t.filter{it.amount>0}.sumOf{it.amount}==o.paid&&-t.filter{it.amount<0}.sumOf{it.amount}==o.receivedRefund)}
         val db=ZaberiDb.get(context);val d=db.orders()
         db.withTransaction{d.clearOrders();d.clearCatalog();orders.forEach{d.insert(it)};transactions.forEach{d.transaction(it)};histories.forEach{d.history(it)};photos.forEach{d.photo(it)};catalog.forEach{d.remember(it)}
-            orders.forEach{o->d.remember(CatalogEntry(uid(),"store","",o.store));if(o.point.isNotBlank())d.remember(CatalogEntry(uid(),"point",o.store,o.point));if(o.category.isNotBlank())d.remember(CatalogEntry(uid(),"category","",o.category))}
+            if(json.optInt("version")==2)orders.forEach{o->d.remember(CatalogEntry(uid(),"store","",o.store));if(o.point.isNotBlank())d.remember(CatalogEntry(uid(),"point",o.store,o.point));if(o.category.isNotBlank())d.remember(CatalogEntry(uid(),"category","",o.category))}
         }
         context.getSystemService(android.app.NotificationManager::class.java).cancelAll()
         context.getSharedPreferences("reminders",Context.MODE_PRIVATE).edit().clear().apply()
