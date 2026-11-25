@@ -85,6 +85,8 @@ Android 8.0+ · Бесплатно · Без регистрации · Осно�
 
 [Документация проекта](https://github.com/epbloger/zaberi/blob/release-1.0-dev/docs/architecture.md)
 
+© 2026 Moorkis Development. Все права защищены. [Условия использования исходных материалов](LICENSE).
+
 ---
 
 <div align="center"><b>ЗАБЕРИ.</b> · Все покупки под контролем.<br>Moorkis Development</div>
