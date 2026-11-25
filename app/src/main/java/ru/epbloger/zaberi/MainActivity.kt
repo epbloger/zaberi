@@ -92,7 +92,12 @@ class MainActivity:ComponentActivity(){
     val snack=remember{SnackbarHostState()}
     val ctx=LocalContext.current
     val notificationPermission=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()){granted->if(granted)Reminders.enqueue(ctx)}
-    var notificationPrompt by rememberSaveable{mutableStateOf(false)}
+    LaunchedEffect(Unit){
+        if(Build.VERSION.SDK_INT>=33&&preferences.enabled&&ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED&&!preferences.notificationAsked){
+            preferences.markNotificationAsked()
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
     LaunchedEffect(Unit){vm.errors.collect{snack.showSnackbar(it)}}
     LaunchedEffect(shared){if(shared!=null){selected=null;editing=false;settingsPage="";tab=0;imported=shared;add=true;consume()}}
     LaunchedEffect(openId,orders){if(openId!=null&&orders.any{it.id==openId}){add=false;editing=false;settingsPage="";tab=0;selected=openId;consumeId()}}
@@ -113,11 +118,10 @@ class MainActivity:ComponentActivity(){
         floatingActionButton={if(order==null&&tab==0)ExtendedFloatingActionButton(onClick={imported="";add=true},icon={Icon(Icons.Default.Add,null)},text={Text("Добавить заказ")})}
     ){pad->
         Box(Modifier.fillMaxSize().padding(pad)){
-            when{order!=null->Detail(order,history.filter{it.orderId==order.id},vm,{selected=null});tab==0->Orders(orders,{selected=it.id},{vm.act(it.id,"received")},searchVisible,{imported="";add=true},preferences.adsEnabled);tab==1->CalendarPage(orders,{selected=it.id});tab==2->Stats(orders,tx);else->SettingsPage(preferences,catalog,vm,settingsPage,{settingsPage=it})}
+            when{order!=null->Detail(order,history.filter{it.orderId==order.id},vm,{selected=null});tab==0->Orders(orders,{selected=it.id},{vm.act(it.id,"received")},searchVisible,{imported="";add=true},preferences.personalizedAds);tab==1->CalendarPage(orders,{selected=it.id});tab==2->Stats(orders,tx);else->SettingsPage(preferences,catalog,vm,settingsPage,{settingsPage=it})}
         }
     }
-    if(add)OrderForm(null,imported,catalog,orders,{add=false}){o->vm.add(o);add=false;tab=0;if(o.deadline!=null&&preferences.enabled&&Build.VERSION.SDK_INT>=33&&ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)notificationPrompt=true}
-    if(notificationPrompt)AlertDialog(onDismissRequest={notificationPrompt=false},title={Text("Напомнить о сроке?")},text={Text("Разрешите уведомления, чтобы Забери мог напомнить о получении или возврате. Это можно изменить в настройках.")},confirmButton={Button(onClick={notificationPrompt=false;if(Build.VERSION.SDK_INT>=33)notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)}){Text("Разрешить")}},dismissButton={TextButton(onClick={notificationPrompt=false}){Text("Не сейчас")}})
+    if(add)OrderForm(null,imported,catalog,orders,{add=false}){o->vm.add(o);add=false;tab=0}
     if(editing&&order!=null)OrderForm(order,"",catalog,orders,{editing=false}){o->vm.edit(o.id,o.name,o.store,o.price,o.deadline,o.point,o.link,o.note,o.category,o.pointLat,o.pointLon);editing=false}
 }
 
@@ -126,7 +130,7 @@ class MainActivity:ComponentActivity(){
         Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(6.dp)){Text(label,style=MaterialTheme.typography.labelMedium);Text(value,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)}
     }
 }
-@Composable private fun Orders(orders:List<Order>,open:(Order)->Unit,received:(Order)->Unit,searchVisible:Boolean,addOrder:()->Unit,adsEnabled:Boolean){
+@Composable private fun Orders(orders:List<Order>,open:(Order)->Unit,received:(Order)->Unit,searchVisible:Boolean,addOrder:()->Unit,personalizedAds:Boolean){
     var filter by rememberSaveable{mutableStateOf("Активные")}
     var query by rememberSaveable{mutableStateOf("")}
     var shop by rememberSaveable{mutableStateOf("")}
@@ -142,6 +146,7 @@ class MainActivity:ComponentActivity(){
         if(searchVisible)item{OutlinedTextField(query,{query=it},Modifier.fillMaxWidth(),singleLine=true,placeholder={Text("Товар, магазин или ПВЗ")},leadingIcon={Icon(Icons.Default.Search,null)},shape=RoundedCornerShape(18.dp))}
         item{Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("Активные","В пути","Можно забрать","Возвраты","История","Все").forEach{FilterChip(selected=filter==it,onClick={filter=it},label={Text(it)})}}}
         if(orders.isNotEmpty())item{OrderFilters(orders,shop,{shop=it},category,{category=it},grouped,{grouped=it})}
+        if(BuildConfig.BANNER_ID.isNotBlank())item(key="banner"){key(personalizedAds){OptionalBanner(personalizedAds)}}
         if(visible.isEmpty())item{
             EmptyOrders(orders.isEmpty()){if(orders.isEmpty())addOrder() else {filter="Все";shop="";category="";query=""}}
         }else item{Text(if(filter=="Активные")"Мои заказы" else filter,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)}
@@ -151,7 +156,7 @@ class MainActivity:ComponentActivity(){
                 items(group,key={it.id}){o->OrderCard(o,if(o.state==Status.READY){{confirmId=o.id}}else null){open(o)}}
             }
         }else items(visible,key={it.id}){o->OrderCard(o,if(o.state==Status.READY){{confirmId=o.id}}else null){open(o)}}
-        if(adsEnabled&&visible.isNotEmpty()&&BuildConfig.BANNER_ID.isNotBlank())item(key="banner"){OptionalBanner()}
+
         item{Spacer(Modifier.height(72.dp))}
     }
     val pending=orders.firstOrNull{it.id==confirmId}
@@ -268,10 +273,10 @@ class MainActivity:ComponentActivity(){
     val parsed=parseMoney(price)
     val state=Status.valueOf(status)
     val valid=name.isNotBlank()&&name.length<=200&&store.isNotBlank()&&store.length<=200&&category.length<=200&&point.length<=200&&validPoint(pointLat,pointLon)&&link.length<=8192&&note.length<=10000&&(!duplicate||duplicateConfirmed)&&(price.isBlank()||parsed!=null)&&(!paid||parsed!=null)&&validDate(deadline)&&(old==null||parsed==null||parsed>=old.paid)
-    Dialog(onDismissRequest=close,properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)){
-      Scaffold(modifier=Modifier.fillMaxSize().imePadding(),containerColor=MaterialTheme.colorScheme.background,
-        topBar={TopAppBar(title={Text(if(old==null)"Новый заказ" else "Редактировать",fontWeight=FontWeight.Bold)},navigationIcon={IconButton(onClick=close){Icon(Icons.Default.Close,"Закрыть")}})},
-        bottomBar={Surface(shadowElevation=2.dp){Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp)){
+    SafeFullscreenDialog(close){
+      Scaffold(modifier=Modifier.fillMaxSize(),contentWindowInsets=WindowInsets(0,0,0,0),containerColor=MaterialTheme.colorScheme.background,
+        topBar={TopAppBar(windowInsets=WindowInsets(0,0,0,0),title={Text(if(old==null)"Новый заказ" else "Редактировать",fontWeight=FontWeight.Bold)},navigationIcon={IconButton(onClick=close){Icon(Icons.Default.Close,"Закрыть")}})},
+        bottomBar={Surface(shadowElevation=2.dp){Column(Modifier.fillMaxWidth().padding(16.dp)){
             Button(enabled=valid,onClick={
                 val d=if(state.deadlineLabel!=null)deadline.trim().takeIf{it.isNotEmpty()}else null
                 val o=old?.copy(name=name.trim(),store=store.trim(),price=parsed,deadline=d,point=point.trim(),link=link.trim(),note=note.trim(),category=category.trim(),pointLat=pointLat,pointLon=pointLon)?:Order(uid(),name.trim(),store.trim(),parsed,if(paid)parsed?:0 else 0,status,d,point.trim(),link.trim(),note.trim(),today(),category=category.trim(),pointLat=pointLat,pointLon=pointLon)
@@ -480,7 +485,7 @@ class MainActivity:ComponentActivity(){
                 SettingsLink(Icons.Default.Store,"Справочники","Магазины, категории и ПВЗ"){open("Справочники")}
                 SettingsLink(Icons.Default.Backup,"Мои данные","Резервное копирование и CSV"){open("Мои данные")}
                 SettingsLink(Icons.Default.Gavel,"Юридическая информация","Конфиденциальность, условия и реклама"){open("Юридическая информация")}
-                SettingsLink(Icons.Default.Campaign,"Реклама","Управление необязательными объявлениями"){open("Реклама")}
+                SettingsLink(Icons.Default.Campaign,"Реклама","Настройка персонализации"){open("Реклама")}
                 SettingsLink(Icons.Default.Info,"О приложении","Версия и обратная связь"){open("О приложении")}
             }
             "Уведомления"->{
@@ -513,8 +518,8 @@ class MainActivity:ComponentActivity(){
             "Конфиденциальность","Условия использования","Реклама и сторонние сервисы","Разработчик и контакты"->LegalDocument(page)
             "О приложении"->{
                 Text("Забери "+BuildConfig.VERSION_NAME,style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
-                Text("Кандидат на релиз. Заказы хранятся на устройстве. Интернет и учётная запись для основных функций не нужны. Реклама необязательна.")
-                SettingsLink(Icons.Default.Feedback,"Обратная связь","Не отправляйте чеки, пароли и личные сведения"){runCatching{ctx.startActivity(Intent(Intent.ACTION_VIEW,android.net.Uri.parse("https://github.com/epbloger/zaberi/issues")))}}
+                Text("Кандидат на релиз. Заказы хранятся на устройстве. Интернет и учётная запись для основных функций не нужны. Реклама помогает поддерживать приложение.")
+                SettingsLink(Icons.Default.Feedback,"Написать в поддержку",SUPPORT_EMAIL){openSupportEmail(ctx)}
                 SettingsLink(Icons.Default.Gavel,"Юридическая информация","Документы приложения"){open("Юридическая информация")}
             }
         }

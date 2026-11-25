@@ -20,15 +20,15 @@ import com.yandex.mobile.ads.common.YandexAds
 @Composable fun AdsSettings(preferences:Preferences){
     val context=LocalContext.current
     HorizontalDivider()
-    Text("Необязательная реклама",style=MaterialTheme.typography.titleMedium)
-    Text("Реклама выключена по умолчанию. Если разрешить объявления, SDK Яндекса использует интернет и может обрабатывать технические данные устройства. Сведения о заказах, фото и суммы не передаются приложением в рекламный запрос. Согласие на персонализацию не передаётся, отслеживание геолокации отключено.")
+    Text("Персонализация рекламы",style=MaterialTheme.typography.titleMedium)
+    Text("Реклама показывается по умолчанию. Вы можете разрешить подбор объявлений с учётом интересов или отказаться от него в любой момент. Без согласия персонализация выключена, обычные объявления остаются. SDK Яндекса может обрабатывать технические сведения; приложение не передаёт ему содержимое заказов и не разрешает отслеживание геолокации.")
     TextButton(onClick={runCatching{context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://yandex.ru/legal/confidential/")))}}){Text("Политика конфиденциальности Яндекса")}
     Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){
-        Text(if(BuildConfig.DEBUG)"Разрешить демонстрационные объявления" else "Разрешить объявления",Modifier.weight(1f))
-        Switch(preferences.adsEnabled,{preferences.adsEnabled(it)},enabled=BuildConfig.BANNER_ID.isNotBlank())
+        Text("Разрешить персонализацию",Modifier.weight(1f))
+        Switch(preferences.personalizedAds,{preferences.personalizedAds(it)})
     }
 }
-@Composable fun OptionalBanner(){
+@Composable fun OptionalBanner(personalized:Boolean){
     if(BuildConfig.BANNER_ID.isBlank())return
     val context=LocalContext.current
     var ready by remember{mutableStateOf(false)}
@@ -36,7 +36,7 @@ import com.yandex.mobile.ads.common.YandexAds
     var loaded by remember{mutableStateOf(false)}
     LaunchedEffect(Unit){
         runCatching{
-            YandexAds.setUserConsent(false)
+            YandexAds.setUserConsent(personalized)
             YandexAds.setLocationTracking(false)
             YandexAds.initialize(context.applicationContext){ready=true}
         }.onFailure{failed=true}

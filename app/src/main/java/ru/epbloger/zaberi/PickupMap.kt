@@ -1,6 +1,10 @@
 package ru.epbloger.zaberi
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import android.content.Intent
 import android.net.Uri
 import android.graphics.BitmapFactory
@@ -169,6 +173,26 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
     var search by rememberSaveable{mutableStateOf(if(lat==null)address else "")}
     var label by rememberSaveable{mutableStateOf(address)}
     var searching by remember{mutableStateOf(false)}
+    var locating by remember{mutableStateOf(false)}
+    var locationMessage by remember{mutableStateOf("")}
+    var userLat by remember{mutableStateOf<Double?>(null)}
+    var userLon by remember{mutableStateOf<Double?>(null)}
+    fun locate(){
+        if(locating)return
+        locating=true;locationMessage="Определяем местоположение…"
+        scope.launch{
+            try{
+                val position=locateForMap(ctx)
+                if(position==null){locationMessage="Местоположение недоступно. Проверьте геолокацию в настройках телефона или найдите адрес.";return@launch}
+                userLat=position.latitude;userLon=position.longitude
+                x=lonToX(position.longitude);y=latToY(position.latitude);zoom=if(position.accuracy>1000f)13 else 17
+                locationMessage="Найдите нужный ПВЗ рядом с вашим местоположением."
+            }finally{locating=false}
+        }
+    }
+    val locationPermission=rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()){grants->
+        if(grants.values.any{it})locate() else locationMessage="Доступ к местоположению не предоставлен. Можно найти адрес вручную."
+    }
     var searchError by remember{mutableStateOf("")}
     var results by remember{mutableStateOf<List<android.location.Address>>(emptyList())}
     var size by remember{mutableStateOf(IntSize.Zero)}
@@ -195,10 +219,10 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
             if(images.size>48)images.keys.filter{it !in needed}.take(images.size-48).forEach{images.remove(it)}
         }
     }
-    Dialog(onDismissRequest=close,properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)){
-        Scaffold(modifier=Modifier.fillMaxSize().imePadding(),topBar={TopAppBar(title={Text("Выбрать точку")},navigationIcon={IconButton(onClick=close){Icon(Icons.Default.Close,"Закрыть")}})},bottomBar={
+    SafeFullscreenDialog(close){
+        Scaffold(modifier=Modifier.fillMaxSize(),contentWindowInsets=WindowInsets(0,0,0,0),topBar={TopAppBar(windowInsets=WindowInsets(0,0,0,0),title={Text("Выбрать точку")},navigationIcon={IconButton(onClick=close){Icon(Icons.Default.Close,"Закрыть")}})},bottomBar={
             Surface(shadowElevation=2.dp){
-                Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)){
+                Column(Modifier.fillMaxWidth().padding(12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)){
                     OutlinedTextField(label,{label=it},label={Text("Адрес или название (необязательно)")},singleLine=true,modifier=Modifier.fillMaxWidth())
                     Button(enabled=zoom>=14&&images.containsKey(center)&&label.length<=200,onClick={
                         val selectedLat=yToLat(y);val selectedLon=xToLon(x)
@@ -226,7 +250,8 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
                         }
                     }){Icon(Icons.Default.Search,"Найти адрес")}
                 }
-                if(searching)LinearProgressIndicator(Modifier.fillMaxWidth())
+                if(locationMessage.isNotBlank())Text(locationMessage,Modifier.padding(horizontal=12.dp,vertical=4.dp),style=MaterialTheme.typography.bodySmall)
+                if(searching||locating)LinearProgressIndicator(Modifier.fillMaxWidth())
                 if(searchError.isNotBlank())Text(searchError,Modifier.padding(horizontal=12.dp),style=MaterialTheme.typography.bodySmall)
                 if(results.isNotEmpty())LazyColumn(Modifier.heightIn(max=140.dp)){items(results){a->
                     val title=a.getAddressLine(0)?:a.locality?:search
@@ -253,9 +278,19 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
                             val top=((v.tile.y-y*n)*tilePx+this.size.height/2).roundToInt()
                             drawImage(bitmap,dstOffset=IntOffset(left,top),dstSize=IntSize(tilePx.roundToInt()+1,tilePx.roundToInt()+1))
                         }
+                        val gy=userLat;val gx=userLon
+                        if(gy!=null&&gx!=null){
+                            val dx=wrapX(lonToX(gx)-x+.5)-.5
+                            val point=androidx.compose.ui.geometry.Offset((this.size.width/2+dx*n*tilePx).toFloat(),(this.size.height/2+(latToY(gy)-y)*n*tilePx).toFloat())
+                            drawCircle(Color.White,10.dp.toPx(),point);drawCircle(Color(0xFF1976D2),7.dp.toPx(),point)
+                        }
                     }
                     Icon(Icons.Default.LocationOn,"Выбранная точка",Modifier.align(Alignment.Center).offset(y=(-17).dp).size(40.dp),tint=Color(0xFFB42318))
                     Column(Modifier.align(Alignment.CenterEnd).padding(8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
+                        FilledTonalIconButton(enabled=!locating,onClick={
+                            if(ctx.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED||ctx.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)==PackageManager.PERMISSION_GRANTED)locate()
+                            else locationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION))
+                        }){Icon(Icons.Default.MyLocation,"Моё местоположение")}
                         FilledTonalIconButton(onClick={zoom=(zoom+1).coerceAtMost(19)},enabled=zoom<19){Icon(Icons.Default.Add,"Приблизить")}
                         FilledTonalIconButton(onClick={zoom=(zoom-1).coerceAtLeast(2)},enabled=zoom>2){Icon(Icons.Default.Remove,"Отдалить")}
                     }

@@ -1,6 +1,8 @@
 
 package ru.epbloger.zaberi
+import android.content.Context
 import android.content.Intent
+import android.widget.Toast
 import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -11,6 +13,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+
+const val SUPPORT_EMAIL="helpmoorkis@yandex.ru"
+fun openSupportEmail(context:Context){
+    val intent=Intent(Intent.ACTION_SENDTO,Uri.parse("mailto:"+SUPPORT_EMAIL)).putExtra(Intent.EXTRA_SUBJECT,"Забери — обращение в поддержку")
+    if(runCatching{context.startActivity(intent)}.isFailure)Toast.makeText(context,"Напишите нам: "+SUPPORT_EMAIL,Toast.LENGTH_LONG).show()
+}
 
 @Composable fun LegalMenu(open:(String)->Unit){
     Text("Документы доступны без интернета.",color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -30,5 +38,5 @@ import androidx.compose.ui.unit.dp
             else->Text(line,style=MaterialTheme.typography.bodyMedium)
         }
     }
-    if(file=="developer"||file=="privacy"||file=="terms")OutlinedButton(onClick={runCatching{ctx.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/epbloger/zaberi/issues")))}},modifier=Modifier.fillMaxWidth()){Text("Открыть страницу поддержки")}
+    if(file=="developer"||file=="privacy"||file=="terms")OutlinedButton(onClick={openSupportEmail(ctx)},modifier=Modifier.fillMaxWidth()){Text("Написать в поддержку")}
 }
