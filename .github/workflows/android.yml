@@ -11,6 +11,8 @@ permissions:
   contents: read
 jobs:
   build:
+    env:
+      ORG_GRADLE_PROJECT_zaberiStoreAge: ${{ vars.ZABERI_STORE_AGE || '0' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -130,6 +132,7 @@ jobs:
             exit 1
           fi
           printf '%s\n' "$GITHUB_SHA" > distribution/commit.txt
+          printf '%s\n' "$ORG_GRADLE_PROJECT_zaberiStoreAge" > distribution/store-age.txt
           (cd distribution && sha256sum zaberi-1.0.3-unsigned.apk > SHA256SUMS.txt)
       - name: Upload unsigned distribution APK
         if: ${{ github.event_name == 'pull_request' && github.head_ref == 'release-1.0-dev' && github.event.pull_request.head.repo.full_name == github.repository }}
