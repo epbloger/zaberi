@@ -2,6 +2,10 @@ package ru.epbloger.zaberi
 
 import android.Manifest
 import android.os.Build
+import android.content.Context
+import android.view.inputmethod.InputMethodManager
+import android.provider.Settings
+import androidx.core.view.WindowCompat
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.core.view.ViewCompat
@@ -19,14 +23,47 @@ class AdaptiveLayoutTest {
     @get:Rule(order=0) val permission=GrantPermissionRule.grant(*(if(Build.VERSION.SDK_INT>=33) arrayOf(Manifest.permission.POST_NOTIFICATIONS) else emptyArray<String>()))
     @get:Rule(order=1) val compose=createAndroidComposeRule<MainActivity>()
 
-    private fun awaitKeyboard(){
-        compose.waitUntil(timeoutMillis=10000){
-            var visible=false
-            compose.runOnUiThread{
-                visible=ViewCompat.getRootWindowInsets(compose.activity.window.decorView)
-                    ?.isVisible(WindowInsetsCompat.Type.ime())==true
+    private fun enterTextWithKeyboard(tag: String, value: String) {
+        val field = compose.onNodeWithTag(tag)
+        if (tag != "map_search") field.performScrollTo()
+        field.performTouchInput { click() }
+        field.assertIsFocused()
+        field.performTextInput(value)
+        field.assertTextContains(value)
+        // Semantic text input by itself is not proof that the OS has shown the IME.
+        // Ask the window/controller explicitly, with a focused editor and real touch input.
+        field.performTouchInput { click() }
+        compose.runOnUiThread {
+            val activity = compose.activity
+            val focused = activity.currentFocus
+            if (focused != null) {
+                val imm = activity.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                imm.showSoftInput(focused, InputMethodManager.SHOW_IMPLICIT)
+                WindowCompat.getInsetsController(activity.window, focused).show(WindowInsetsCompat.Type.ime())
             }
-            visible
+        }
+        awaitKeyboard(tag)
+    }
+
+    private fun awaitKeyboard(tag: String) {
+        var diagnostic = ""
+        try {
+            compose.waitUntil(timeoutMillis = 15000) {
+                var visible = false
+                compose.runOnUiThread {
+                    val activity = compose.activity
+                    val decor = activity.window.decorView
+                    val root = activity.currentFocus ?: decor
+                    val insets = ViewCompat.getRootWindowInsets(root) ?: ViewCompat.getRootWindowInsets(decor)
+                    val ime = insets?.getInsets(WindowInsetsCompat.Type.ime())?.bottom ?: 0
+                    val bars = insets?.getInsets(WindowInsetsCompat.Type.navigationBars())?.bottom ?: 0
+                    visible = insets?.isVisible(WindowInsetsCompat.Type.ime()) == true && ime > bars
+                    diagnostic = "tag=$tag ime=$ime nav=$bars visible=$visible focus=${activity.currentFocus?.javaClass?.name} windowFocus=${decor.hasWindowFocus()} defaultIme=${Settings.Secure.getString(activity.contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)}"
+                }
+                visible
+            }
+        } catch (e: ComposeTimeoutException) {
+            throw AssertionError("Real software keyboard did not open: $diagnostic", e)
         }
         compose.waitForIdle()
     }
@@ -65,11 +102,9 @@ class AdaptiveLayoutTest {
         compose.onNodeWithTag("new_order").performTouchInput{click()}
         assertInsideWindow("save_order")
         val name="Проверка интерфейса "+System.nanoTime()
-        compose.onNodeWithTag("order_name").performScrollTo().performClick().performTextInput(name)
-        awaitKeyboard()
+        enterTextWithKeyboard("order_name", name)
         assertInsideWindow("save_order")
-        compose.onNodeWithTag("order_store").performScrollTo().performClick().performTextInput("Тестовый магазин")
-        awaitKeyboard()
+        enterTextWithKeyboard("order_store", "Тестовый магазин")
         compose.onNodeWithTag("save_order").assertIsEnabled()
         assertInsideWindow("save_order")
         compose.onNodeWithTag("save_order").performTouchInput{click()}
@@ -81,12 +116,10 @@ class AdaptiveLayoutTest {
     }
     @Test fun mapActionRemainsVisibleAndReturnsToDraft(){
         compose.onNodeWithTag("new_order").performTouchInput{click()}
-        compose.onNodeWithTag("order_name").performScrollTo().performClick().performTextInput("Черновик")
-        awaitKeyboard()
+        enterTextWithKeyboard("order_name", "Черновик")
         compose.onNodeWithTag("open_pickup_map").performScrollTo().performTouchInput{click()}
         assertInsideWindow("save_pickup")
-        compose.onNodeWithTag("map_search").performClick().performTextInput("Москва")
-        awaitKeyboard()
+        enterTextWithKeyboard("map_search", "Москва")
         assertInsideWindow("save_pickup")
         compose.onNodeWithContentDescription("Закрыть").performTouchInput{click()}
         compose.onNodeWithTag("order_name").performScrollTo().assertTextContains("Черновик")
