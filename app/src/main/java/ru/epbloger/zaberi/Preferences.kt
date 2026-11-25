@@ -22,8 +22,22 @@ class Preferences(private val context:Context) {
         private set
     val notificationAsked get()=prefs.getBoolean("notificationAsked",false)
     fun markNotificationAsked(){prefs.edit().putBoolean("notificationAsked",true).apply()}
-    // Public release does not use behavioral advertising, including after upgrades.
-    val personalizedAds:Boolean get()=false
+    // Age declaration and consent are independent, local and versioned.
+    var adultAdsConfirmed by mutableStateOf(prefs.getBoolean("adultAdsConfirmed_v1",false))
+        private set
+    var adConsent by mutableStateOf(prefs.getBoolean("adConsent_v1",false))
+        private set
+    val adultAdsEligible:Boolean get()=BuildConfig.STORE_AGE>=12&&adultAdsConfirmed
+    val personalizedAds:Boolean get()=adultAdsEligible&&adConsent
+    fun confirmAdultAds(value:Boolean){
+        adultAdsConfirmed=value
+        if(!value)adConsent=false
+        prefs.edit().putBoolean("adultAdsConfirmed_v1",value).putBoolean("adConsent_v1",adConsent).apply()
+    }
+    fun setAdConsent(value:Boolean){
+        adConsent=value&&adultAdsEligible
+        prefs.edit().putBoolean("adConsent_v1",adConsent).apply()
+    }
     fun leadDays(value:Int){leadDays=value.coerceIn(0,7);prefs.edit().putInt("leadDays",leadDays).apply();Reminders.enqueue(context)}
     fun overdue(value:Boolean){overdue=value;prefs.edit().putBoolean("overdue",value).apply();Reminders.enqueue(context)}
     init { prefs.edit().remove("personalizedAds").remove("adsEnabled").apply() }
