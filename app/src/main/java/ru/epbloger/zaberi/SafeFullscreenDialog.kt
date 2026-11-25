@@ -61,13 +61,15 @@ internal fun AdaptiveActionScreen(title:String,close:()->Unit,action:@Composable
                             Text(title,Modifier.weight(1f).padding(end=8.dp),style=if(policy.compact)MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)
                         }
                     }
-                    Box(Modifier.weight(1f).fillMaxWidth()){content()}
+                    Box(Modifier.weight(1f).fillMaxWidth()){
+                        CompositionLocalProvider(LocalActionPagePadding provides policy.horizontalPadding.dp){content()}
+                    }
                 }
             }
             // Non-weighted primary action is measured before scrollable content.
             Surface(Modifier.fillMaxWidth(),shadowElevation=2.dp,color=MaterialTheme.colorScheme.surface){
-                Box(Modifier.fillMaxWidth().padding(horizontal=policy.horizontalPadding.dp,vertical=policy.verticalPadding.dp),contentAlignment=Alignment.Center){
-                    Row(Modifier.widthIn(max=policy.maxContentWidth.dp).fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
+                Box(Modifier.fillMaxWidth(),contentAlignment=Alignment.Center){
+                    Row(Modifier.widthIn(max=policy.maxContentWidth.dp).fillMaxWidth().padding(horizontal=policy.horizontalPadding.dp,vertical=policy.verticalPadding.dp),verticalAlignment=Alignment.CenterVertically){
                         if(policy.inlineClose)IconButton(onClick=close){Icon(Icons.Default.Close,"Закрыть")}
                         Box(Modifier.weight(1f)){action()}
                     }

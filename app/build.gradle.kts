@@ -6,6 +6,18 @@ plugins {
 }
 val configuredBannerId = providers.gradleProperty("zaberiBannerId").orElse("").get()
 require(configuredBannerId.isEmpty() || Regex("R-M-[0-9]+-[0-9]+").matches(configuredBannerId)) { "Invalid advertising block identifier" }
+// Release credentials are supplied only by the local environment.
+val signingEnv = listOf("ZABERI_KEYSTORE_PATH","ZABERI_STORE_PASSWORD","ZABERI_KEY_ALIAS","ZABERI_KEY_PASSWORD")
+    .associateWith { providers.environmentVariable(it).orNull }
+val signingConfigured = signingEnv.values.all { !it.isNullOrBlank() }
+require(signingEnv.values.none { !it.isNullOrBlank() } || signingConfigured) {
+    "Supply all four release signing environment variables, or none for unsigned checks"
+}
+val publishableRelease = providers.gradleProperty("zaberiPublishableRelease").orElse("false").get().toBoolean()
+if (publishableRelease) {
+    require(signingConfigured) { "A publication build requires a private release signing key" }
+    require(configuredBannerId.isNotBlank()) { "A publication build requires the configured production ad block" }
+}
 android {
  namespace = "ru.epbloger.zaberi"
  compileSdk = 35
@@ -14,14 +26,30 @@ android {
   minSdk = 26
   targetSdk = 35
   testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-  versionCode = 105
-  versionName = "1.0.0-rc6"
+  versionCode = 106
+  versionName = "1.0.0-rc7"
   buildConfigField("String","BANNER_ID","\""+configuredBannerId+"\"")
  }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
  kotlinOptions { jvmTarget = "17" }
  buildFeatures { compose = true; buildConfig = true }
- buildTypes { debug { buildConfigField("String","BANNER_ID","\"demo-banner-yandex\"") }; release { isMinifyEnabled = false } }
+ if (signingConfigured) {
+  signingConfigs {
+   create("zaberiRelease") {
+    storeFile = file(requireNotNull(signingEnv["ZABERI_KEYSTORE_PATH"]))
+    storePassword = signingEnv["ZABERI_STORE_PASSWORD"]
+    keyAlias = signingEnv["ZABERI_KEY_ALIAS"]
+    keyPassword = signingEnv["ZABERI_KEY_PASSWORD"]
+   }
+  }
+ }
+ buildTypes {
+  debug { buildConfigField("String","BANNER_ID","\"demo-banner-yandex\"") }
+  release {
+   isMinifyEnabled = false
+   if (signingConfigured) signingConfig = signingConfigs.getByName("zaberiRelease")
+  }
+ }
 }
 dependencies {
  implementation("com.yandex.android:mobileads:8.7.0")

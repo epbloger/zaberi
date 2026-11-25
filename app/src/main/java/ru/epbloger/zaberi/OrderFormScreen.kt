@@ -78,13 +78,13 @@ import java.util.Locale
                 val d=if(state.deadlineLabel!=null)deadline.trim().takeIf{it.isNotEmpty()}else null
                 val o=old?.copy(name=name.trim(),store=store.trim(),price=parsed,deadline=d,point=point.trim(),link=link.trim(),note=note.trim(),category=category.trim(),pointLat=pointLat,pointLon=pointLon)?:Order(draftId,name.trim(),store.trim(),parsed,if(paid)parsed?:0 else 0,status,d,point.trim(),link.trim(),note.trim(),draftCreated,category=category.trim(),pointLat=pointLat,pointLon=pointLon)
                 focus.clearFocus();keyboard?.hide();save(o)
-            },modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("save_order")){Text(if(saving)"Сохраняем…" else if(old==null)"Добавить заказ" else "Сохранить",maxLines=2)}
+            },modifier=Modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch).testTag("save_order")){Text(if(saving)"Сохраняем…" else if(old==null)"Добавить заказ" else "Сохранить",maxLines=2)}
     }){
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal=16.dp,vertical=12.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal=LocalActionPagePadding.current,vertical=UiSpacing.Block),verticalArrangement=Arrangement.spacedBy(UiSpacing.Block)){
             Text("Основное",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
             Text("Название, магазин и текущий статус",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(name,{name=it},modifier=Modifier.fillMaxWidth().testTag("order_name"),label={Text("Название товара")},singleLine=true)
-            Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(4.dp)){(catalog.filter{it.kind=="store"}.map{it.value}+stores).distinct().take(30).forEach{s->FilterChip(store==s,{if(store!=s){point="";pointLat=null;pointLon=null};store=s},{Text(s)})}}
+            Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(UiSpacing.Tight)){(catalog.filter{it.kind=="store"}.map{it.value}+stores).distinct().take(30).forEach{s->FilterChip(store==s,{if(store!=s){point="";pointLat=null;pointLon=null};store=s},{Text(s)})}}
             if(store !in stores || advanced)OutlinedTextField(store,{if(store!=it){point="";pointLat=null;pointLon=null};store=it},modifier=Modifier.fillMaxWidth().testTag("order_store"),label={Text("Название магазина")},singleLine=true)
             else TextButton(onClick={advanced=true;store="";point="";pointLat=null;pointLon=null}){Text("Другой магазин")}
             Field(price,{price=it},"Стоимость, ₽ (необязательно)",true)
@@ -97,7 +97,7 @@ import java.util.Locale
             PickupSelector(store,point,pointLat,pointLon,catalog){address,lat,lon->point=address;pointLat=lat;pointLon=lon}
             TextButton(onClick={advanced=!advanced}){Text(if(advanced)"Скрыть дополнительные сведения" else "Дополнительные сведения")}
             if(advanced){
-                Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(4.dp)){(catalog.filter{it.kind=="category"}.map{it.value}+categories).distinct().take(30).forEach{v->FilterChip(category==v,{category=if(category==v)"" else v},{Text(v)})}}
+                Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(UiSpacing.Tight)){(catalog.filter{it.kind=="category"}.map{it.value}+categories).distinct().take(30).forEach{v->FilterChip(category==v,{category=if(category==v)"" else v},{Text(v)})}}
                 Field(category,{category=it},"Категория")
                 Field(link,{link=it;duplicateConfirmed=false},"Ссылка на товар")
                 OutlinedTextField(note,{note=it},Modifier.fillMaxWidth(),label={Text("Заметка")})

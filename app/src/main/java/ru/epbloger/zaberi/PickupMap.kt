@@ -138,8 +138,8 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
     var draft by rememberSaveable{mutableStateOf("")}
     val saved=catalog.filter{it.kind=="point"&&it.parent.equals(store.trim(),true)}
     Text("Пункт выдачи",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold)
-    OutlinedCard(shape=RoundedCornerShape(16.dp),modifier=Modifier.fillMaxWidth()){
-        Row(Modifier.fillMaxWidth().padding(12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){
+    OutlinedCard(shape=RoundedCornerShape(UiSpacing.CardRadius),modifier=Modifier.fillMaxWidth()){
+        Row(Modifier.fillMaxWidth().padding(UiSpacing.Card),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(UiSpacing.Related)){
             Icon(Icons.Default.LocationOn,null,tint=MaterialTheme.colorScheme.primary)
             Column(Modifier.weight(1f).clickable{query="";chooser=true}){
                 Text(if(address.isBlank())"Выбрать ПВЗ" else address,fontWeight=FontWeight.Medium)
@@ -149,13 +149,13 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
             else IconButton(onClick={query="";chooser=true}){Icon(Icons.Default.ChevronRight,"Выбрать ПВЗ")}
         }
     }
-    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
-        OutlinedButton(onClick={draft=address;manual=true},modifier=Modifier.weight(1f).heightIn(min=48.dp)){Text("Вручную")}
-        Button(onClick={showMap()},modifier=Modifier.weight(1f).heightIn(min=48.dp).testTag("open_pickup_map")){Icon(Icons.Default.Map,null,Modifier.size(18.dp));Spacer(Modifier.width(5.dp));Text("На карте")}
+    Row(horizontalArrangement=Arrangement.spacedBy(UiSpacing.Related)){
+        OutlinedButton(onClick={draft=address;manual=true},modifier=Modifier.weight(1f).heightIn(min=UiSpacing.Touch)){Text("Вручную")}
+        Button(onClick={showMap()},modifier=Modifier.weight(1f).heightIn(min=UiSpacing.Touch).testTag("open_pickup_map")){Icon(Icons.Default.Map,null,Modifier.size(18.dp));Spacer(Modifier.width(5.dp));Text("На карте")}
     }
     if(saved.isNotEmpty())TextButton(onClick={query="";chooser=true}){Text("Сохранённые ПВЗ ("+saved.size+")")}
     if(chooser)AlertDialog(onDismissRequest={chooser=false},title={Text("Выбрать ПВЗ")},text={
-        Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
+        Column(verticalArrangement=Arrangement.spacedBy(UiSpacing.Related)){
             OutlinedTextField(query,{query=it},singleLine=true,label={Text("Поиск среди сохранённых")},modifier=Modifier.fillMaxWidth())
             if(saved.isEmpty())Text("Пока нет сохранённых пунктов. Добавьте свой адрес или точку на карте.")
             LazyColumn(Modifier.heightIn(max=240.dp)){
@@ -167,7 +167,7 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
             TextButton(onClick={chooser=false;showMap()}){Text("Указать на карте")}
         }
     },confirmButton={TextButton(onClick={chooser=false}){Text("Закрыть")}})
-    if(manual)AlertDialog(onDismissRequest={manual=false},title={Text("Адрес пункта выдачи")},text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){
+    if(manual)AlertDialog(onDismissRequest={manual=false},title={Text("Адрес пункта выдачи")},text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(UiSpacing.Related)){
         OutlinedTextField(draft,{draft=it},label={Text("Адрес или название")},modifier=Modifier.fillMaxWidth())
         if(lat!=null)Text("При ручном изменении адреса точка на карте будет сброшена. При необходимости выберите её снова.",style=MaterialTheme.typography.bodySmall)
     }},confirmButton={Button(enabled=draft.isNotBlank()&&draft.length<=200,onClick={change(draft.trim(),if(draft.trim()==address)lat else null,if(draft.trim()==address)lon else null);manual=false}){Text("Сохранить")}},dismissButton={TextButton(onClick={manual=false}){Text("Отмена")}})
@@ -270,13 +270,13 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
                     }finally{resolving=false}
                 }
             }
-        },modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("save_pickup")){Text(if(resolving)"Определяем адрес…" else "Сохранить точку")}
+        },modifier=Modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch).testTag("save_pickup")){Text(if(resolving)"Определяем адрес…" else "Сохранить точку")}
     }){
         BoxWithConstraints(Modifier.fillMaxSize()){
             val compact=maxHeight<350.dp || maxWidth<340.dp || LocalDensity.current.fontScale>=1.5f
             val veryShort=maxHeight<155.dp
             Column(Modifier.fillMaxSize()){
-                Row(Modifier.fillMaxWidth().padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically){
+                Row(Modifier.fillMaxWidth().padding(horizontal=LocalActionPagePadding.current),verticalAlignment=Alignment.CenterVertically){
                     OutlinedTextField(search,{search=it},singleLine=true,label={Text("Город или адрес")},modifier=Modifier.weight(1f).testTag("map_search"))
                     IconButton(enabled=search.isNotBlank()&&!searching,onClick={
                         focus.clearFocus();keyboard?.hide();searching=true;searchError="";results=emptyList()
@@ -293,15 +293,15 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
                     }){Icon(Icons.Default.Search,"Найти адрес")}
                     if(compact&&!veryShort)IconButton(enabled=!resolving,onClick={editAddress(false)}){Icon(Icons.Default.Edit,"Название ПВЗ")}
                 }
-                if(!veryShort&&locationMessage.isNotBlank())Text(locationMessage,Modifier.padding(horizontal=12.dp,vertical=4.dp),style=MaterialTheme.typography.bodySmall)
+                if(!veryShort&&locationMessage.isNotBlank())Text(locationMessage,Modifier.padding(horizontal=LocalActionPagePadding.current,vertical=UiSpacing.Tight),style=MaterialTheme.typography.bodySmall)
                 if(searching||locating||resolving)LinearProgressIndicator(Modifier.fillMaxWidth())
-                if(!veryShort&&addressMessage.isNotBlank())Text(addressMessage,Modifier.padding(horizontal=12.dp),style=MaterialTheme.typography.bodySmall,maxLines=2)
-                if(!veryShort&&searchError.isNotBlank())Text(searchError,Modifier.padding(horizontal=12.dp),style=MaterialTheme.typography.bodySmall)
+                if(!veryShort&&addressMessage.isNotBlank())Text(addressMessage,Modifier.padding(horizontal=LocalActionPagePadding.current),style=MaterialTheme.typography.bodySmall,maxLines=2)
+                if(!veryShort&&searchError.isNotBlank())Text(searchError,Modifier.padding(horizontal=LocalActionPagePadding.current),style=MaterialTheme.typography.bodySmall)
                 if(results.isNotEmpty())LazyColumn(Modifier.heightIn(max=if(compact)72.dp else 140.dp)){items(results){a->
                     val title=a.getAddressLine(0)?:a.locality?:search
                     ListItem(headlineContent={Text(title)},modifier=Modifier.clickable{x=lonToX(a.longitude);y=latToY(a.latitude);zoom=17;label=cleanPickupAddress(title).orEmpty();labelX=x;labelY=y;results=emptyList()})
                 }}
-                if(!compact)Row(Modifier.fillMaxWidth().padding(horizontal=8.dp),verticalAlignment=Alignment.CenterVertically){
+                if(!compact)Row(Modifier.fillMaxWidth().padding(horizontal=LocalActionPagePadding.current),verticalAlignment=Alignment.CenterVertically){
                     Text(if(zoom<14)"Приблизьте карту до здания" else "Нажмите на нужное здание",Modifier.weight(1f),style=MaterialTheme.typography.bodySmall,maxLines=2)
                     TextButton(enabled=!resolving,onClick={editAddress(false)}){Text("Адрес")}
                 }
@@ -341,8 +341,8 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
                         FilledTonalIconButton(onClick={zoom=(zoom+1).coerceAtMost(19)},enabled=zoom<19){Icon(Icons.Default.Add,"Приблизить")}
                         FilledTonalIconButton(onClick={zoom=(zoom-1).coerceAtLeast(2)},enabled=zoom>2){Icon(Icons.Default.Remove,"Отдалить")}
                     }
-                    if(maxHeight>=168.dp)Column(Modifier.align(Alignment.CenterEnd).padding(4.dp),verticalArrangement=Arrangement.spacedBy(4.dp)){controls()}
-                    else if(maxHeight>=48.dp)Row(Modifier.align(Alignment.BottomCenter),horizontalArrangement=Arrangement.spacedBy(2.dp)){controls()}
+                    if(maxHeight>=168.dp)Column(Modifier.align(Alignment.CenterEnd).padding(4.dp),verticalArrangement=Arrangement.spacedBy(UiSpacing.Tight)){controls()}
+                    else if(maxHeight>=48.dp)Row(Modifier.align(Alignment.BottomCenter),horizontalArrangement=Arrangement.spacedBy(UiSpacing.Tight)){controls()}
                     if(loading)LinearProgressIndicator(Modifier.align(Alignment.TopCenter).fillMaxWidth())
                     if(failed&&!loading)FilledTonalButton(onClick={retry++},modifier=Modifier.align(Alignment.TopCenter).padding(8.dp)){Text("Повторить загрузку")}
                 }
@@ -351,7 +351,7 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
         }
     }
     if(editLabel)AlertDialog(onDismissRequest={editLabel=false;pendingSave=false},title={Text("Адрес пункта выдачи")},text={
-        Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){
+        Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(UiSpacing.Related)){
             Text(if(labelDraft.isBlank()&&pendingSave)"Не удалось определить адрес автоматически. Введите адрес или название ПВЗ." else "Укажите или уточните адрес выбранной точки.")
             OutlinedTextField(labelDraft,{if(it.length<=200)labelDraft=it},label={Text("Адрес или название")},modifier=Modifier.fillMaxWidth().testTag("pickup_address"))
             Text("Точные координаты сохраняются для открытия карты.",style=MaterialTheme.typography.bodySmall)

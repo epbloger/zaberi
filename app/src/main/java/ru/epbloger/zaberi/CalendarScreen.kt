@@ -58,12 +58,12 @@ import java.util.Locale
     val active=orders.filter{!it.state.archived&&it.deadline!=null}.sortedBy{it.deadline}
     val byDay=active.groupBy{it.deadline}
     val offset=month.atDay(1).dayOfWeek.value-1
-    LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(14.dp)){
-        item{Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){FilterChip(!upcoming,{upcoming=false},{Text("Календарь")});FilterChip(upcoming,{upcoming=true},{Text("Все сроки")})}}
+    LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(UiSpacing.Page),verticalArrangement=Arrangement.spacedBy(UiSpacing.Block)){
+        item{Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(UiSpacing.Related)){FilterChip(!upcoming,{upcoming=false},{Text("Календарь")});FilterChip(upcoming,{upcoming=true},{Text("Все сроки")})}}
         if(!upcoming){
             item{
-                OutlinedCard(shape=RoundedCornerShape(24.dp),colors=CardDefaults.outlinedCardColors(containerColor=MaterialTheme.colorScheme.surface)){
-                    Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)){
+                OutlinedCard(shape=RoundedCornerShape(UiSpacing.CardRadius),colors=CardDefaults.outlinedCardColors(containerColor=MaterialTheme.colorScheme.surface)){
+                    Column(Modifier.padding(UiSpacing.Card),verticalArrangement=Arrangement.spacedBy(UiSpacing.Related)){
                         Row(verticalAlignment=Alignment.CenterVertically){
                             IconButton(onClick={monthString=month.minusMonths(1).toString();dayString=month.minusMonths(1).atDay(1).toString()}){Icon(Icons.Default.ChevronLeft,"Предыдущий месяц")}
                             Text(month.format(DateTimeFormatter.ofPattern("LLLL yyyy",Locale("ru"))).replaceFirstChar{it.titlecase(Locale("ru"))},Modifier.weight(1f),style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold,textAlign=androidx.compose.ui.text.style.TextAlign.Center)
@@ -75,13 +75,13 @@ import java.util.Locale
                             if(n in 1..month.lengthOfMonth()){
                                 val date=month.atDay(n);val ds=date.toString();val count=byDay[ds]?.size?:0
                                 val selected=dayString==ds
-                                Surface(modifier=Modifier.weight(1f).heightIn(min=48.dp).padding(2.dp).clickable{dayString=ds},shape=RoundedCornerShape(12.dp),color=if(selected)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,border=if(date==now)BorderStroke(1.dp,MaterialTheme.colorScheme.primary)else null){
+                                Surface(modifier=Modifier.weight(1f).heightIn(min=UiSpacing.Touch).padding(2.dp).clickable{dayString=ds},shape=RoundedCornerShape(12.dp),color=if(selected)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,border=if(date==now)BorderStroke(1.dp,MaterialTheme.colorScheme.primary)else null){
                                     Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){
                                         Text(n.toString(),fontWeight=if(selected||date==now)FontWeight.Bold else FontWeight.Normal,color=if(selected)MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
                                         if(count>0)Text(if(count>9)"9+" else count.toString(),style=MaterialTheme.typography.labelSmall,color=if(date.isBefore(now))MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                                     }
                                 }
-                            }else Spacer(Modifier.weight(1f).heightIn(min=48.dp))
+                            }else Spacer(Modifier.weight(1f).heightIn(min=UiSpacing.Touch))
                         }}}
                         TextButton(onClick={monthString=YearMonth.now().toString();dayString=today()},modifier=Modifier.align(Alignment.End)){Text("Сегодня")}
                     }

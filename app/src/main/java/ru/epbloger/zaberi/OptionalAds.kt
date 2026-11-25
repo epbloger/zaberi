@@ -63,7 +63,7 @@ import com.yandex.mobile.ads.common.YandexAds
             }
             Column{
                 if(loaded)Text(if(BuildConfig.DEBUG)"Тестовая реклама" else "Реклама",style=MaterialTheme.typography.labelSmall)
-                AndroidView(factory={view},modifier=Modifier.fillMaxWidth())
+                key(view){AndroidView(factory={view},modifier=Modifier.fillMaxWidth())}
             }
         }
     }

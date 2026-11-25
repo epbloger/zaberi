@@ -112,7 +112,19 @@ class AdaptiveLayoutTest {
         val persisted=runBlocking{ZaberiDb.get(compose.activity.applicationContext).orders().all().any{it.name==name&&it.store=="Тестовый магазин"}}
         assertTrue("Order must actually be committed to Room before leaving the form",persisted)
         compose.onNodeWithTag("orders_list").performScrollToNode(hasText(name))
-        compose.onNodeWithText(name).assertIsDisplayed()
+        compose.onNodeWithText(name).assertIsDisplayed().performTouchInput{click()}
+        val primary=compose.onNodeWithTag("primary_action").performScrollTo().assertIsDisplayed().fetchSemanticsNode()
+        val delete=compose.onNodeWithTag("delete_order").performScrollTo()
+        assertInsideWindow("delete_order")
+        assertTrue("Delete button must match primary action width", kotlin.math.abs(primary.size.width-delete.fetchSemanticsNode().size.width)<=2)
+        delete.performTouchInput{click()}
+        compose.onNodeWithText("Удалить заказ?").assertIsDisplayed()
+        compose.onNodeWithText("Отмена").performClick()
+        assertTrue("Cancelling deletion must preserve order",runBlocking{ZaberiDb.get(compose.activity.applicationContext).orders().all().any{it.name==name}})
+        delete.performScrollTo().performTouchInput{click()}
+        compose.onNodeWithTag("confirm_delete_order").performClick()
+        compose.waitUntil(timeoutMillis=10000){compose.onAllNodesWithTag("new_order").fetchSemanticsNodes().isNotEmpty()}
+        assertTrue("Confirmed deletion must reach Room",runBlocking{ZaberiDb.get(compose.activity.applicationContext).orders().all().none{it.name==name}})
     }
     @Test fun mapActionRemainsVisibleAndReturnsToDraft(){
         compose.onNodeWithTag("new_order").performTouchInput{click()}

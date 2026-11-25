@@ -59,7 +59,7 @@ internal fun validDate(s:String)=s.isBlank()||runCatching{LocalDate.parse(s)}.is
 
 @Composable internal fun Metric(label:String,value:String,modifier:Modifier=Modifier,accent:Boolean=false){
     Card(modifier,colors=CardDefaults.cardColors(containerColor=if(accent)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)){
-        Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(6.dp)){Text(label,style=MaterialTheme.typography.labelMedium);Text(value,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)}
+        Column(Modifier.padding(UiSpacing.Card),verticalArrangement=Arrangement.spacedBy(UiSpacing.Related)){Text(label,style=MaterialTheme.typography.labelMedium);Text(value,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)}
     }
 }
 @Composable internal fun Field(v:String,set:(String)->Unit,label:String,decimal:Boolean=false){
@@ -72,9 +72,9 @@ internal fun validDate(s:String)=s.isBlank()||runCatching{LocalDate.parse(s)}.is
         val d=current?:LocalDate.now()
         android.app.DatePickerDialog(ctx,{_,y,m,day->set(LocalDate.of(y,m+1,day).toString())},d.year,d.monthValue-1,d.dayOfMonth).show()
     }
-    OutlinedCard(shape=RoundedCornerShape(16.dp),modifier=Modifier.fillMaxWidth(),colors=CardDefaults.outlinedCardColors(containerColor=MaterialTheme.colorScheme.surface)){
-        Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=4.dp),verticalAlignment=Alignment.CenterVertically){
-            Row(Modifier.weight(1f).heightIn(min=58.dp).clickable(role=Role.Button,onClick=openCalendar),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
+    OutlinedCard(shape=RoundedCornerShape(UiSpacing.CardRadius),modifier=Modifier.fillMaxWidth(),colors=CardDefaults.outlinedCardColors(containerColor=MaterialTheme.colorScheme.surface)){
+        Row(Modifier.fillMaxWidth().padding(horizontal=UiSpacing.Card,vertical=UiSpacing.Tight),verticalAlignment=Alignment.CenterVertically){
+            Row(Modifier.weight(1f).heightIn(min=58.dp).clickable(role=Role.Button,onClick=openCalendar),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(UiSpacing.Block)){
                 Icon(Icons.Default.CalendarMonth,"Выбрать дату",tint=MaterialTheme.colorScheme.primary)
                 Column(Modifier.weight(1f)){Text(label,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant);Text(if(current==null)"Выбрать дату" else dateText(v),style=MaterialTheme.typography.bodyLarge)}
             }
@@ -83,4 +83,13 @@ internal fun validDate(s:String)=s.isBlank()||runCatching{LocalDate.parse(s)}.is
         }
     }
 }
-@Composable internal fun Primary(label:String,click:()->Unit){Button(onClick=click,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)){Text(label)}}
+@Composable internal fun Primary(label:String,click:()->Unit){Button(onClick=click,modifier=Modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch).testTag("primary_action")){Text(label)}}
+
+@Composable internal fun SecondaryAction(label:String,click:()->Unit,modifier:Modifier=Modifier,destructive:Boolean=false){
+    val colors=if(destructive)ButtonDefaults.outlinedButtonColors(contentColor=MaterialTheme.colorScheme.error) else ButtonDefaults.outlinedButtonColors()
+    OutlinedButton(onClick=click,modifier=modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch),colors=colors,
+        border=if(destructive)BorderStroke(1.dp,MaterialTheme.colorScheme.error.copy(alpha=.65f)) else BorderStroke(1.dp,MaterialTheme.colorScheme.outline)){
+        if(destructive){Icon(Icons.Default.DeleteOutline,null,Modifier.size(18.dp));Spacer(Modifier.width(UiSpacing.Related))}
+        Text(label)
+    }
+}

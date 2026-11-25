@@ -158,5 +158,5 @@ class Model(app: Application): AndroidViewModel(app) {
         try{PrivateFiles.addPhoto(getApplication(),id,uri)}catch(e:kotlinx.coroutines.CancellationException){throw e}catch(e:Exception){reportError("Не удалось добавить фото: "+(e.message?:"ошибка"))}
     }
     fun deletePhoto(id:String)=change{dao.removePhoto(id)}
-    fun remove(id: String) = change(afterCommit={cancelReminder(id)}) { dao.get(id)?.let { dao.delete(it) } }
+    fun remove(id: String, completed: ((Boolean) -> Unit)? = null) = change(completed=completed,afterCommit={cancelReminder(id)}) { dao.get(id)?.let { dao.delete(it) } }
 }

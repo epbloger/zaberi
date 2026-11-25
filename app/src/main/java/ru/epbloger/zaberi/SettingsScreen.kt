@@ -53,11 +53,11 @@ import java.util.Locale
     val ctx=LocalContext.current
     val scroll=rememberScrollState()
     LaunchedEffect(page){scroll.scrollTo(0)}
-    Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
+    Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(UiSpacing.Page),verticalArrangement=Arrangement.spacedBy(UiSpacing.Block)){
         when(page){
             ""->{
-                Card(shape=RoundedCornerShape(24.dp),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer)){
-                    Row(Modifier.fillMaxWidth().padding(20.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)){
+                Card(shape=RoundedCornerShape(UiSpacing.CardRadius),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer)){
+                    Row(Modifier.fillMaxWidth().padding(UiSpacing.Card),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(UiSpacing.Block)){
                         Icon(Icons.Default.Inventory2,null,Modifier.size(38.dp));Column{Text("ЗАБЕРИ.",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold);Text("Все покупки под контролем",style=MaterialTheme.typography.bodySmall)}
                     }
                 }
@@ -107,10 +107,10 @@ import java.util.Locale
     }
 }
 @Composable internal fun SettingsLink(icon:ImageVector,title:String,subtitle:String,click:()->Unit){
-    OutlinedCard(onClick=click,shape=RoundedCornerShape(18.dp),modifier=Modifier.fillMaxWidth(),colors=CardDefaults.outlinedCardColors(containerColor=MaterialTheme.colorScheme.surface),border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant)){
-        Row(Modifier.padding(14.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
+    OutlinedCard(onClick=click,shape=RoundedCornerShape(UiSpacing.CardRadius),modifier=Modifier.fillMaxWidth(),colors=CardDefaults.outlinedCardColors(containerColor=MaterialTheme.colorScheme.surface),border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant)){
+        Row(Modifier.padding(UiSpacing.Card),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(UiSpacing.Block)){
             Surface(shape=RoundedCornerShape(12.dp),color=MaterialTheme.colorScheme.primaryContainer){Icon(icon,null,Modifier.padding(11.dp),tint=MaterialTheme.colorScheme.onPrimaryContainer)}
-            Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)){Text(title,fontWeight=FontWeight.SemiBold);Text(subtitle,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+            Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(UiSpacing.Tight)){Text(title,fontWeight=FontWeight.SemiBold);Text(subtitle,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
             Icon(Icons.Default.ChevronRight,null,tint=MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -141,15 +141,15 @@ import java.util.Locale
     HorizontalDivider()
     Text("Резервное копирование",style=MaterialTheme.typography.titleLarge)
     Text("Копия заказов, операций, истории, справочников и фото защищена паролем. Восстановление заменяет текущие заказы. Пароль восстановить нельзя.")
-    OutlinedButton(enabled=!busy,onClick={action="export";password="";confirm=""},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)){Text("Создать защищённую копию")}
-    OutlinedButton(enabled=!busy,onClick={action="restore";password="";confirm=""},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)){Text("Восстановить из копии")}
-    OutlinedButton(enabled=!busy,onClick={action="csv"},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)){Text("Экспорт операций CSV")}
+    OutlinedButton(enabled=!busy,onClick={action="export";password="";confirm=""},modifier=Modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch)){Text("Создать защищённую копию")}
+    OutlinedButton(enabled=!busy,onClick={action="restore";password="";confirm=""},modifier=Modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch)){Text("Восстановить из копии")}
+    OutlinedButton(enabled=!busy,onClick={action="csv"},modifier=Modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch)){Text("Экспорт операций CSV")}
     if(busy)LinearProgressIndicator(Modifier.fillMaxWidth())
     if(message.isNotBlank())Text(message)
     if(action.isNotEmpty()){
         val kind=action
         AlertDialog(onDismissRequest={action="";password="";confirm=""},title={Text(when(kind){"export"->"Пароль резервной копии";"restore"->"Заменить текущие данные?";else->"Экспорт операций"})},text={
-            Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){
+            Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(UiSpacing.Related)){
                 if(kind=="csv")Text("CSV не зашифрован и содержит названия покупок и суммы. Сохраняйте его только в доверенном месте.")
                 else{
                     if(kind=="restore")Text("Все текущие заказы, операции и фото будут заменены содержимым копии. Сначала сохраните текущие данные, если они нужны.")
@@ -175,12 +175,12 @@ import java.util.Locale
     HorizontalDivider()
     TextButton(onClick={expanded=!expanded}){Text(if(expanded)"Скрыть справочники" else "Магазины, категории и пункты выдачи")}
     if(expanded){
-        Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(4.dp)){listOf("store" to "Магазины","category" to "Категории","point" to "ПВЗ").forEach{(k,label)->FilterChip(kind==k,{kind=k;value="";parent="";lat=null;lon=null},{Text(label)})}}
+        Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(UiSpacing.Tight)){listOf("store" to "Магазины","category" to "Категории","point" to "ПВЗ").forEach{(k,label)->FilterChip(kind==k,{kind=k;value="";parent="";lat=null;lon=null},{Text(label)})}}
         if(kind=="point"){
             Field(parent,{if(parent!=it){value="";lat=null;lon=null};parent=it},"Магазин пункта выдачи")
             PickupSelector(parent,value,lat,lon,catalog){address,y,x->value=address;lat=y;lon=x}
         }else Field(value,{value=it},"Добавить название")
-        Button(enabled=value.isNotBlank()&&value.length<=200&&(kind!="point"||parent.isNotBlank()),onClick={vm.addCatalog(kind,parent,value,lat,lon);value="";lat=null;lon=null}){Text("Добавить")}
+        Button(enabled=value.isNotBlank()&&value.length<=200&&(kind!="point"||parent.isNotBlank()),onClick={vm.addCatalog(kind,parent,value,lat,lon);value="";lat=null;lon=null},modifier=Modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch)){Text("Добавить")}
         catalog.filter{it.kind==kind}.forEach{entry->
             Row(verticalAlignment=Alignment.CenterVertically){
                 Text((if(entry.kind=="point")entry.parent+" · " else "")+entry.value,Modifier.weight(1f))
@@ -196,7 +196,7 @@ import java.util.Locale
     HorizontalDivider()
     Text("Удаление данных",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
     Text("Можно очистить все заказы, фото, историю, финансовые операции и сохранённые справочники. Ранее экспортированные файлы останутся в выбранных местах.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-    OutlinedButton(onClick={confirm=true},modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Delete,null,tint=MaterialTheme.colorScheme.error);Spacer(Modifier.width(8.dp));Text("Удалить все данные заказов",color=MaterialTheme.colorScheme.error)}
+    OutlinedButton(onClick={confirm=true},modifier=Modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch)){Icon(Icons.Default.Delete,null,tint=MaterialTheme.colorScheme.error);Spacer(Modifier.width(8.dp));Text("Удалить все данные заказов",color=MaterialTheme.colorScheme.error)}
     if(confirm)AlertDialog(onDismissRequest={confirm=false},title={Text("Удалить все заказы?")},text={Text("Это действие нельзя отменить без резервной копии. Настройки оформления и уведомлений сохранятся.")},confirmButton={TextButton(onClick={vm.clearData();confirm=false}){Text("Удалить всё",color=MaterialTheme.colorScheme.error)}},dismissButton={TextButton(onClick={confirm=false}){Text("Отмена")}})
 }
 
@@ -204,6 +204,6 @@ import java.util.Locale
     val ctx=LocalContext.current
     val scope=rememberCoroutineScope()
     var cacheMessage by remember{mutableStateOf("")}
-    OutlinedButton(onClick={scope.launch{cacheMessage=if(withContext(kotlinx.coroutines.Dispatchers.IO){clearPickupMapCache(ctx)})"Кэш карты очищен. Сохранённые ПВЗ не изменились." else "Не удалось очистить кэш карты."}},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)){Text("Очистить кэш карты")}
+    OutlinedButton(onClick={scope.launch{cacheMessage=if(withContext(kotlinx.coroutines.Dispatchers.IO){clearPickupMapCache(ctx)})"Кэш карты очищен. Сохранённые ПВЗ не изменились." else "Не удалось очистить кэш карты."}},modifier=Modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch)){Text("Очистить кэш карты")}
     if(cacheMessage.isNotBlank())Text(cacheMessage,style=MaterialTheme.typography.bodySmall)
 }
