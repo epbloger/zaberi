@@ -37,7 +37,7 @@ import com.yandex.mobile.ads.common.YandexAds
         if(preferences.adultAdsEligible){
             Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){
                 Text("Разрешить персонализацию",Modifier.weight(1f))
-                Switch(preferences.personalizedAds,{if(it)consentDialog=true else preferences.setAdConsent(false)})
+                Switch(preferences.personalizedAds,{if(it)consentDialog=true else preferences.updateAdConsent(false)})
             }
         }
         if(consentDialog&&preferences.adultAdsEligible)AlertDialog(
@@ -47,7 +47,7 @@ import com.yandex.mobile.ads.common.YandexAds
                 Text("Я добровольно разрешаю ООО «ЯНДЕКС» обрабатывать доступные технические и рекламные идентификаторы, сведения об устройстве, сети, показах и взаимодействиях с рекламой для подбора объявлений по интересам и оценки их эффективности. Согласие действует до его отзыва. Отозвать согласие можно в разделе «Настройки → Реклама». Это не отключает обычную рекламу. Обработка Яндексом осуществляется по его политике конфиденциальности.")
                 TextButton(onClick={runCatching{context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://yandex.ru/legal/confidential/")))}}){Text("Политика Яндекса")}
             }},
-            confirmButton={TextButton(onClick={preferences.setAdConsent(true);consentDialog=false}){Text("Согласен")}},
+            confirmButton={TextButton(onClick={preferences.updateAdConsent(true);consentDialog=false}){Text("Согласен")}},
             dismissButton={TextButton(onClick={consentDialog=false}){Text("Не согласен")}}
         )
     }else Text("Персонализированная реклама не используется при возрастной категории 0+ или 6+.")
