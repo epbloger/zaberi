@@ -36,7 +36,7 @@ class Preferences(private val context:Context) {
             if(!value) remove("adConsentAt_v1")
         }.apply()
     }
-    fun setAdConsent(value:Boolean){
+    fun updateAdConsent(value:Boolean){
         adConsent=value&&adultAdsEligible
         prefs.edit().putBoolean("adConsent_v1",adConsent).apply {
             if(adConsent) putLong("adConsentAt_v1",System.currentTimeMillis()) else remove("adConsentAt_v1")
