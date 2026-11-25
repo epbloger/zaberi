@@ -133,7 +133,9 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
     val openMap=LocalPickupMap.current
     val focus=LocalFocusManager.current
     val keyboard=LocalSoftwareKeyboardController.current
-    fun showMap(){focus.clearFocus();keyboard?.hide();openMap(PickupMapRequest(address,lat,lon,change))}
+    var mapNotice by rememberSaveable{mutableStateOf(false)}
+    fun showMap(){focus.clearFocus();keyboard?.hide();mapNotice=true}
+    if(mapNotice)AlertDialog(onDismissRequest={mapNotice=false},title={Text("Открыть онлайн-карту?")},text={Text("Карта обращается к OpenStreetMap Foundation (зарубежная сеть серверов): передаются IP-адрес и координаты фрагментов карты. Поиск адреса использует системный сервис Android. Можно отказаться и указать ПВЗ вручную без интернета.")},confirmButton={TextButton(onClick={mapNotice=false;openMap(PickupMapRequest(address,lat,lon,change))},modifier=Modifier.testTag("confirm_online_map")){Text("Открыть карту")}},dismissButton={TextButton(onClick={mapNotice=false}){Text("Отмена")}})
     var query by rememberSaveable{mutableStateOf("")}
     var draft by rememberSaveable{mutableStateOf("")}
     val saved=catalog.filter{it.kind=="point"&&it.parent.equals(store.trim(),true)}
