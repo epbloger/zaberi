@@ -9,6 +9,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
 import org.junit.Assert.assertTrue
+import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -72,8 +73,11 @@ class AdaptiveLayoutTest {
         compose.onNodeWithTag("save_order").assertIsEnabled()
         assertInsideWindow("save_order")
         compose.onNodeWithTag("save_order").performTouchInput{click()}
-        compose.onNodeWithTag("new_order").assertIsDisplayed()
-        compose.waitUntil(timeoutMillis=5000){compose.onAllNodesWithText(name).fetchSemanticsNodes().isNotEmpty()}
+        compose.waitUntil(timeoutMillis=10000){compose.onAllNodesWithTag("new_order").fetchSemanticsNodes().isNotEmpty()}
+        val persisted=runBlocking{ZaberiDb.get(compose.activity.applicationContext).orders().all().any{it.name==name&&it.store=="Тестовый магазин"}}
+        assertTrue("Order must actually be committed to Room before leaving the form",persisted)
+        compose.onNodeWithTag("orders_list").performScrollToNode(hasText(name))
+        compose.onNodeWithText(name).assertIsDisplayed()
     }
     @Test fun mapActionRemainsVisibleAndReturnsToDraft(){
         compose.onNodeWithTag("new_order").performTouchInput{click()}

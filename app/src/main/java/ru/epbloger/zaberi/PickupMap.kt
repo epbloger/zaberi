@@ -15,6 +15,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -165,7 +167,7 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
             TextButton(onClick={chooser=false;showMap()}){Text("Указать на карте")}
         }
     },confirmButton={TextButton(onClick={chooser=false}){Text("Закрыть")}})
-    if(manual)AlertDialog(onDismissRequest={manual=false},title={Text("Адрес пункта выдачи")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
+    if(manual)AlertDialog(onDismissRequest={manual=false},title={Text("Адрес пункта выдачи")},text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){
         OutlinedTextField(draft,{draft=it},label={Text("Адрес или название")},modifier=Modifier.fillMaxWidth())
         if(lat!=null)Text("При ручном изменении адреса точка на карте будет сброшена. При необходимости выберите её снова.",style=MaterialTheme.typography.bodySmall)
     }},confirmButton={Button(enabled=draft.isNotBlank()&&draft.length<=200,onClick={change(draft.trim(),if(draft.trim()==address)lat else null,if(draft.trim()==address)lon else null);manual=false}){Text("Сохранить")}},dismissButton={TextButton(onClick={manual=false}){Text("Отмена")}})

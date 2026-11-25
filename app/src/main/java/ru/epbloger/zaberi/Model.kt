@@ -18,10 +18,14 @@ class Model(app: Application): AndroidViewModel(app) {
     val history = dao.history().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val catalog = dao.catalog().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val errors = MutableSharedFlow<String>(extraBufferCapacity=1)
-    private fun change(block: suspend () -> Unit) = viewModelScope.launch {
-        try { db.withTransaction { block() }; Reminders.enqueue(getApplication()) }
+    private fun change(completed:((Boolean)->Unit)?=null,block: suspend () -> Unit) = viewModelScope.launch {
+        try { db.withTransaction { block() } }
         catch (e: kotlinx.coroutines.CancellationException) { throw e }
-        catch (e: Exception) { errors.emit(e.message ?: "Не удалось сохранить") }
+        catch (e: Exception) { completed?.invoke(false);errors.emit(e.message ?: "Не удалось сохранить");return@launch }
+        completed?.invoke(true)
+        try { Reminders.enqueue(getApplication()) }
+        catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (e: Exception) { errors.emit("Данные сохранены, но не удалось запланировать напоминания") }
     }
     private suspend fun log(id: String, label: String) = dao.history(History(uid(),id,LocalDateTime.now().toString(),label))
     private suspend fun rememberValues(o:Order){
@@ -40,7 +44,7 @@ class Model(app: Application): AndroidViewModel(app) {
         if(kind=="point"&&lat!=null&&lon!=null)dao.updatePoint(parent.trim(),value.trim(),lat,lon)
     }
     fun forgetCatalog(id:String)=change{dao.forget(id)}
-    fun add(order: Order) = change {
+    fun add(order: Order,completed:((Boolean)->Unit)?=null) = change(completed) {
         require(order.name.isNotBlank() && order.store.isNotBlank() && order.paid>=0 && (order.price==null||order.price>=order.paid))
         require(validPoint(order.pointLat,order.pointLon)&&(order.pointLat==null||order.point.isNotBlank()))
         dao.insert(order)
@@ -48,7 +52,7 @@ class Model(app: Application): AndroidViewModel(app) {
         if (order.paid > 0) dao.transaction(Transaction(uid(),order.id,today(),order.paid))
         log(order.id,"Добавлен: ${order.state.label}")
     }
-    fun edit(id: String, name: String, store: String, price: Long?, deadline: String?, point: String, link: String, note: String, category:String,pointLat:Double?=null,pointLon:Double?=null) = change {
+    fun edit(id: String, name: String, store: String, price: Long?, deadline: String?, point: String, link: String, note: String, category:String,pointLat:Double?=null,pointLon:Double?=null,completed:((Boolean)->Unit)?=null) = change(completed) {
         require(validPoint(pointLat,pointLon)&&(pointLat==null||point.isNotBlank()))
         val o = dao.get(id) ?: error("Заказ не найден")
         require(name.isNotBlank() && store.isNotBlank())
