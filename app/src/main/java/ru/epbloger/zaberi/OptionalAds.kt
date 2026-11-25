@@ -61,7 +61,7 @@ import com.yandex.mobile.ads.common.YandexAds
                 runCatching{view.loadAd(AdRequest.Builder(BuildConfig.BANNER_ID).build())}.onFailure{failed=true}
                 onDispose{runCatching{view.setBannerAdEventListener(null);view.destroy()}}
             }
-            Column{
+            Column(Modifier.fillMaxWidth().padding(bottom=if(loaded)UiSpacing.Block else 0.dp),verticalArrangement=Arrangement.spacedBy(if(loaded)UiSpacing.Tight else 0.dp)){
                 if(loaded)Text(if(BuildConfig.DEBUG)"Тестовая реклама" else "Реклама",style=MaterialTheme.typography.labelSmall)
                 key(view){AndroidView(factory={view},modifier=Modifier.fillMaxWidth())}
             }

@@ -33,10 +33,10 @@ fun openSupportEmail(context:Context){
     val document=remember(file){runCatching{ctx.assets.open("legal/"+file+".md").bufferedReader(Charsets.UTF_8).use{it.readText()}}.getOrDefault("Документ недоступен. Обновите приложение.")}
     document.lineSequence().filter{it.isNotBlank()}.forEach{line->
         when{
-            line.startsWith("## ")->Text(line.removePrefix("## "),style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold,modifier=Modifier.padding(top=8.dp))
+            line.startsWith("## ")->Text(line.removePrefix("## "),style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
             line.startsWith("# ")->Text(line.removePrefix("# "),style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
             else->Text(line,style=MaterialTheme.typography.bodyMedium)
         }
     }
-    if(file=="developer"||file=="privacy"||file=="terms")OutlinedButton(onClick={openSupportEmail(ctx)},modifier=Modifier.fillMaxWidth()){Text("Написать в поддержку")}
+    if(file=="developer"||file=="privacy"||file=="terms")OutlinedButton(onClick={openSupportEmail(ctx)},modifier=Modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch)){Text("Написать в поддержку")}
 }

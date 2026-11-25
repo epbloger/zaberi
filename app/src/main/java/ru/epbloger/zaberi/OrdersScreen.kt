@@ -65,13 +65,16 @@ import java.util.Locale
         if(searchVisible)item{OutlinedTextField(query,{query=it},Modifier.fillMaxWidth(),singleLine=true,placeholder={Text("Товар, магазин или ПВЗ")},leadingIcon={Icon(Icons.Default.Search,null)},shape=RoundedCornerShape(UiSpacing.CardRadius))}
         item{Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(UiSpacing.Related)){listOf("Активные","В пути","Можно забрать","Возвраты","История","Все").forEach{FilterChip(selected=filter==it,onClick={filter=it},label={Text(it)})}}}
         if(orders.isNotEmpty())item{OrderFilters(orders,shop,{shop=it},category,{category=it},grouped,{grouped=it})}
-        if(BuildConfig.BANNER_ID.isNotBlank())item(key="banner"){key(personalizedAds){OptionalBanner(personalizedAds)}}
-        if(visible.isEmpty())item{
-            EmptyOrders(orders.isEmpty()){if(orders.isEmpty())addOrder() else {filter="Все";shop="";category="";query=""}}
-        }else item{Text(if(filter=="Активные")"Мои заказы" else filter,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)}
+        item(key="orders-heading"){
+            Column(Modifier.fillMaxWidth()){
+                if(BuildConfig.BANNER_ID.isNotBlank())key(personalizedAds){OptionalBanner(personalizedAds)}
+                if(visible.isEmpty())EmptyOrders(orders.isEmpty()){if(orders.isEmpty())addOrder() else {filter="Все";shop="";category="";query=""}}
+                else Text(if(filter=="Активные")"Мои заказы" else filter,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
+            }
+        }
         if(grouped){
             visible.groupBy{if(it.point.isBlank())"Пункт не указан" else it.store+" · "+it.point}.forEach{(title,group)->
-                item(key="group:"+title){Text(title,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold);Text("Можно забрать: "+group.count{it.state==Status.READY},style=MaterialTheme.typography.bodySmall)}
+                item(key="group:"+title){Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(UiSpacing.Tight)){Text(title,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold);Text("Можно забрать: "+group.count{it.state==Status.READY},style=MaterialTheme.typography.bodySmall)}}
                 items(group,key={it.id}){o->OrderCard(o,if(o.state==Status.READY){{confirmId=o.id}}else null){open(o)}}
             }
         }else items(visible,key={it.id}){o->OrderCard(o,if(o.state==Status.READY){{confirmId=o.id}}else null){open(o)}}
@@ -120,24 +123,17 @@ import java.util.Locale
     val urgent=active.count{orderPriority(it.state,it.deadline?.let{d->LocalDate.parse(d)},LocalDate.now())==0}
     Column(verticalArrangement=Arrangement.spacedBy(UiSpacing.Block)){
         Text(LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMMM",Locale("ru"))).replaceFirstChar{it.titlecase(Locale("ru"))},style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
-        Card(modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(UiSpacing.CardRadius),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer)){
+        Card(modifier=Modifier.fillMaxWidth().testTag("overview_summary"),shape=RoundedCornerShape(UiSpacing.CardRadius),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer)){
             Column(Modifier.padding(UiSpacing.Card),verticalArrangement=Arrangement.spacedBy(UiSpacing.Tight)){
                 Text("Покупки под контролем",style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.onPrimaryContainer)
                 Text(if(active.isEmpty())"Пока нет активных заказов" else "Активных заказов: "+active.size,style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
                 if(urgent>0)Text("Требуют внимания: "+urgent,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodyMedium)else Text("Важные сроки будут здесь",style=MaterialTheme.typography.bodySmall)
             }
         }
-        BoxWithConstraints(Modifier.fillMaxWidth()){
-            if(maxWidth<340.dp||androidx.compose.ui.platform.LocalDensity.current.fontScale>=1.5f){
-                Column(verticalArrangement=Arrangement.spacedBy(UiSpacing.Related)){
-                    OverviewTile("Можно забрать",active.count{it.state==Status.READY}.toString(),Icons.Default.Inventory2,Modifier.fillMaxWidth(),readyClick)
-                    OverviewTile("Ждут возврата",money(waiting),Icons.Default.AccountBalanceWallet,Modifier.fillMaxWidth(),refundClick)
-                }
-            }else Row(horizontalArrangement=Arrangement.spacedBy(UiSpacing.Related)){
-                OverviewTile("Можно забрать",active.count{it.state==Status.READY}.toString(),Icons.Default.Inventory2,Modifier.weight(1f),readyClick)
-                OverviewTile("Ждут возврата",money(waiting),Icons.Default.AccountBalanceWallet,Modifier.weight(1f),refundClick)
-            }
-        }
+        AdaptiveCardPair(
+            first={modifier->OverviewTile("Можно забрать",active.count{it.state==Status.READY}.toString(),Icons.Default.Inventory2,modifier.testTag("overview_ready"),readyClick)},
+            second={modifier->OverviewTile("Ждут возврата",money(waiting),Icons.Default.AccountBalanceWallet,modifier.testTag("overview_refund"),refundClick)}
+        )
     }
 }
 @Composable internal fun OverviewTile(label:String,value:String,icon:ImageVector,modifier:Modifier,click:()->Unit){
@@ -150,7 +146,7 @@ import java.util.Locale
     }
 }
 @Composable internal fun EmptyOrders(first:Boolean,action:()->Unit){
-    Column(Modifier.fillMaxWidth().padding(vertical=UiSpacing.Page,horizontal=UiSpacing.Page),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(UiSpacing.Block)){
+    Column(Modifier.fillMaxWidth(),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(UiSpacing.Block)){
         Surface(shape=RoundedCornerShape(UiSpacing.CardRadius),color=MaterialTheme.colorScheme.primaryContainer){Icon(Icons.Default.Inventory2,null,Modifier.padding(22.dp).size(38.dp),tint=MaterialTheme.colorScheme.onPrimaryContainer)}
         Text(if(first)"Добавьте первый заказ" else "Ничего не найдено",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
         Text(if(first)"Выберите магазин и укажите срок. Забери напомнит, когда пора за покупкой." else "Попробуйте сбросить фильтры.",style=MaterialTheme.typography.bodyMedium,textAlign=androidx.compose.ui.text.style.TextAlign.Center,color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -159,7 +155,7 @@ import java.util.Locale
 }
 @Composable internal fun OrderFilters(orders:List<Order>,shop:String,setShop:(String)->Unit,category:String,setCategory:(String)->Unit,grouped:Boolean,setGrouped:(Boolean)->Unit){
     var expanded by rememberSaveable{mutableStateOf(false)}
-    Column{
+    Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(UiSpacing.Related)){
         Row(verticalAlignment=Alignment.CenterVertically){
             TextButton(onClick={expanded=!expanded}){Icon(Icons.Default.FilterList,null);Text("Фильтры"+if(shop.isNotBlank()||category.isNotBlank())" •" else "")}
             Spacer(Modifier.weight(1f))

@@ -149,9 +149,9 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
             else IconButton(onClick={query="";chooser=true}){Icon(Icons.Default.ChevronRight,"Выбрать ПВЗ")}
         }
     }
-    Row(horizontalArrangement=Arrangement.spacedBy(UiSpacing.Related)){
+    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(UiSpacing.Block)){
         OutlinedButton(onClick={draft=address;manual=true},modifier=Modifier.weight(1f).heightIn(min=UiSpacing.Touch)){Text("Вручную")}
-        Button(onClick={showMap()},modifier=Modifier.weight(1f).heightIn(min=UiSpacing.Touch).testTag("open_pickup_map")){Icon(Icons.Default.Map,null,Modifier.size(18.dp));Spacer(Modifier.width(5.dp));Text("На карте")}
+        Button(onClick={showMap()},modifier=Modifier.weight(1f).heightIn(min=UiSpacing.Touch).testTag("open_pickup_map")){Icon(Icons.Default.Map,null,Modifier.size(18.dp));Spacer(Modifier.width(UiSpacing.Tight));Text("На карте")}
     }
     if(saved.isNotEmpty())TextButton(onClick={query="";chooser=true}){Text("Сохранённые ПВЗ ("+saved.size+")")}
     if(chooser)AlertDialog(onDismissRequest={chooser=false},title={Text("Выбрать ПВЗ")},text={
@@ -346,7 +346,7 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
                     if(loading)LinearProgressIndicator(Modifier.align(Alignment.TopCenter).fillMaxWidth())
                     if(failed&&!loading)FilledTonalButton(onClick={retry++},modifier=Modifier.align(Alignment.TopCenter).padding(8.dp)){Text("Повторить загрузку")}
                 }
-                Text("© OpenStreetMap contributors",Modifier.fillMaxWidth().clickable{runCatching{ctx.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://www.openstreetmap.org/copyright")))}}.padding(6.dp),style=MaterialTheme.typography.labelSmall)
+                Text("© OpenStreetMap contributors",Modifier.fillMaxWidth().clickable{runCatching{ctx.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://www.openstreetmap.org/copyright")))}}.padding(horizontal=LocalActionPagePadding.current,vertical=UiSpacing.Tight),style=MaterialTheme.typography.labelSmall)
             }
         }
     }

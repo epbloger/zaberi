@@ -144,7 +144,7 @@ import java.util.Locale
         Text("Фото заказа",Modifier.weight(1f),style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
         Text("${photos.size}/5",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
     }
-    Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(UiSpacing.Related)){
+    if(photos.isNotEmpty())Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(UiSpacing.Related)){
         photos.forEach{a->
             val bitmap=remember(a.id){android.graphics.BitmapFactory.decodeByteArray(a.jpeg,0,a.jpeg.size)?.asImageBitmap()}
             if(bitmap!=null)Image(bitmap,"Фото заказа",Modifier.size(90.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).clickable{preview=a.id},contentScale=androidx.compose.ui.layout.ContentScale.Crop)
@@ -152,7 +152,7 @@ import java.util.Locale
     }
     if(photos.size<5){
         val enabled=!importing&&pendingCamera==null
-        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(UiSpacing.Related)){
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(UiSpacing.Block)){
             OutlinedButton(enabled=enabled,onClick={
                 sourceError=""
                 try{picker.launch("image/*")}catch(e:Exception){sourceError="Галерея недоступна."}

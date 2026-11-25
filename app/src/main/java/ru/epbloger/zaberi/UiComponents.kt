@@ -58,7 +58,7 @@ internal fun dateText(s:String?)=s?.let{runCatching{LocalDate.parse(it).format(D
 internal fun validDate(s:String)=s.isBlank()||runCatching{LocalDate.parse(s)}.isSuccess
 
 @Composable internal fun Metric(label:String,value:String,modifier:Modifier=Modifier,accent:Boolean=false){
-    Card(modifier,colors=CardDefaults.cardColors(containerColor=if(accent)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)){
+    Card(modifier,shape=RoundedCornerShape(UiSpacing.CardRadius),colors=CardDefaults.cardColors(containerColor=if(accent)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)){
         Column(Modifier.padding(UiSpacing.Card),verticalArrangement=Arrangement.spacedBy(UiSpacing.Related)){Text(label,style=MaterialTheme.typography.labelMedium);Text(value,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)}
     }
 }
@@ -91,5 +91,23 @@ internal fun validDate(s:String)=s.isBlank()||runCatching{LocalDate.parse(s)}.is
         border=if(destructive)BorderStroke(1.dp,MaterialTheme.colorScheme.error.copy(alpha=.65f)) else BorderStroke(1.dp,MaterialTheme.colorScheme.outline)){
         if(destructive){Icon(Icons.Default.DeleteOutline,null,Modifier.size(18.dp));Spacer(Modifier.width(UiSpacing.Related))}
         Text(label)
+    }
+}
+
+// The pair is a group of peer cards: its internal gap must match the gap
+// between this group and the surrounding cards in both layout orientations.
+@Composable internal fun AdaptiveCardPair(first:@Composable (Modifier)->Unit,second:@Composable (Modifier)->Unit){
+    BoxWithConstraints(Modifier.fillMaxWidth()){
+        if(maxWidth<340.dp||androidx.compose.ui.platform.LocalDensity.current.fontScale>=1.5f){
+            Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(UiSpacing.Block)){
+                first(Modifier.fillMaxWidth())
+                second(Modifier.fillMaxWidth())
+            }
+        }else{
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min),horizontalArrangement=Arrangement.spacedBy(UiSpacing.Block)){
+                first(Modifier.weight(1f).fillMaxHeight())
+                second(Modifier.weight(1f).fillMaxHeight())
+            }
+        }
     }
 }

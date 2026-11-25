@@ -71,19 +71,11 @@ import java.util.Locale
             Text(if(period=="Месяц")month.format(DateTimeFormatter.ofPattern("LLLL yyyy",Locale("ru"))).replaceFirstChar{it.titlecase(Locale("ru"))}else year.toString(),Modifier.weight(1f),style=MaterialTheme.typography.titleMedium,textAlign=androidx.compose.ui.text.style.TextAlign.Center)
             IconButton(onClick={offset++},enabled=offset<0){Icon(Icons.Default.ChevronRight,"Следующий период")}
         }}
-        item{Card(modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(UiSpacing.CardRadius),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer)){
-            Column(Modifier.padding(UiSpacing.Card),verticalArrangement=Arrangement.spacedBy(UiSpacing.Related)){
-                Text("Фактические расходы",style=MaterialTheme.typography.labelLarge)
-                Text(money(spent-refund),style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
-                Text("Оплата минус полученные возвраты за период",style=MaterialTheme.typography.bodySmall)
-            }
-        }}
-        item{BoxWithConstraints(Modifier.fillMaxWidth()){if(maxWidth<340.dp||androidx.compose.ui.platform.LocalDensity.current.fontScale>=1.5f)Column(verticalArrangement=Arrangement.spacedBy(UiSpacing.Related)){Metric("Оплачено",money(spent),Modifier.fillMaxWidth());Metric("Возвращено",money(refund),Modifier.fillMaxWidth())}else Row(horizontalArrangement=Arrangement.spacedBy(UiSpacing.Related)){Metric("Оплачено",money(spent),Modifier.weight(1f));Metric("Возвращено",money(refund),Modifier.weight(1f))}}}
-        item{Metric("Ожидаются возвраты · все заказы",money(pending),Modifier.fillMaxWidth())}
+        item{StatisticsSummary(spent,refund,pending)}
         item{Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(UiSpacing.Related)){listOf("Магазины","Категории").forEach{FilterChip(grouping==it,{grouping=it},{Text(it)})}}}
         if(groups.isEmpty())item{Text("Нет операций за выбранный период.",color=MaterialTheme.colorScheme.onSurfaceVariant)}
         items(groups){(label,total)->
-            OutlinedCard(shape=RoundedCornerShape(UiSpacing.CardRadius),colors=CardDefaults.outlinedCardColors(containerColor=MaterialTheme.colorScheme.surface)){
+            OutlinedCard(modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(UiSpacing.CardRadius),colors=CardDefaults.outlinedCardColors(containerColor=MaterialTheme.colorScheme.surface)){
                 Column(Modifier.fillMaxWidth().padding(UiSpacing.Card),verticalArrangement=Arrangement.spacedBy(UiSpacing.Related)){
                     Row(verticalAlignment=Alignment.CenterVertically){Text(label,Modifier.weight(1f),fontWeight=FontWeight.Medium);Text(money(total),fontWeight=FontWeight.Bold)}
                     LinearProgressIndicator(progress={kotlin.math.abs(total).toFloat()/largest.toFloat()},modifier=Modifier.fillMaxWidth().height(5.dp),color=if(total<0)MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary)
@@ -92,10 +84,28 @@ import java.util.Locale
         }
         item{TextButton(onClick={showOperations=!showOperations}){Text(if(showOperations)"Скрыть операции" else "Показать операции ("+subset.size+")")}}
         if(showOperations)items(subset.sortedByDescending{it.date},key={it.id}){t->
-            Row(Modifier.fillMaxWidth().padding(vertical=5.dp),verticalAlignment=Alignment.CenterVertically){
+            Row(Modifier.fillMaxWidth().padding(vertical=UiSpacing.Tight),verticalAlignment=Alignment.CenterVertically){
                 Column(Modifier.weight(1f)){Text(index[t.orderId]?.name?:"Заказ",maxLines=2,overflow=TextOverflow.Ellipsis);Text(dateText(t.date),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
                 Text((if(t.amount<0)"−" else "+")+money(kotlin.math.abs(t.amount)),fontWeight=FontWeight.SemiBold)
             }
         }
+    }
+}
+
+// One column owns all vertical gaps between summary cards.
+@Composable internal fun StatisticsSummary(spent:Long,refund:Long,pending:Long){
+    Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(UiSpacing.Block)){
+        Card(modifier=Modifier.fillMaxWidth().testTag("stats_expenses"),shape=RoundedCornerShape(UiSpacing.CardRadius),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer)){
+            Column(Modifier.padding(UiSpacing.Card),verticalArrangement=Arrangement.spacedBy(UiSpacing.Related)){
+                Text("Фактические расходы",style=MaterialTheme.typography.labelLarge)
+                Text(money(spent-refund),style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
+                Text("Оплата минус полученные возвраты за период",style=MaterialTheme.typography.bodySmall)
+            }
+        }
+        AdaptiveCardPair(
+            first={modifier->Metric("Оплачено",money(spent),modifier.testTag("stats_paid"))},
+            second={modifier->Metric("Возвращено",money(refund),modifier.testTag("stats_refunded"))}
+        )
+        Metric("Ожидаются возвраты · все заказы",money(pending),Modifier.fillMaxWidth().testTag("stats_pending"))
     }
 }
