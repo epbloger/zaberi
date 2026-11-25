@@ -88,7 +88,7 @@ class MainActivity:ComponentActivity(){
     var searchVisible by rememberSaveable{mutableStateOf(false)}
     val snack=remember{SnackbarHostState()}
     val ctx=LocalContext.current
-    val adsReady=rememberAdsReady(preferences.personalizedAds,!preferences.adultAdsEligible)
+    val adsReady=rememberAdsReady(preferences.personalizedAds,AdPrivacyPolicy.ageRestricted(BuildConfig.STORE_AGE,preferences.adultAdsConfirmed))
     val adController=remember(ctx,preferences.personalizedAds,preferences.adultAdsEligible,adsReady){
         if(adsReady&&ctx is ComponentActivity&&BuildConfig.INTERSTITIAL_ID.isNotBlank())runCatching{InterstitialController(ctx,BuildConfig.INTERSTITIAL_ID)}.getOrNull() else null
     }
