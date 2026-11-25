@@ -1,6 +1,8 @@
 package ru.epbloger.zaberi
 import android.content.Intent
 import android.net.Uri
+import android.os.SystemClock
+import kotlinx.coroutines.delay
 import android.view.View
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -25,7 +27,7 @@ import com.yandex.mobile.ads.common.YandexAds
     Text("Баннеры и редкие полноэкранные объявления помогают сохранять приложение бесплатным. Отключить рекламу в настройках нельзя. SDK Яндекса может обрабатывать технические сведения для показа и оценки эффективности объявлений. Содержимое заказов не передаётся рекламному SDK. Геолокация для рекламы отключена.")
     TextButton(onClick={runCatching{context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://yandex.ru/legal/confidential/")))}}){Text("Политика конфиденциальности Яндекса")}
     if(BuildConfig.STORE_AGE>=12){
-        Text("Персонализация доступна только совершеннолетним по отдельному добровольному согласию. Без него продолжаются запросы обычных объявлений в пределах правил SDK.")
+        Text("Персонализация доступна только совершеннолетним по отдельному добровольному согласию. Без него приложение передаёт SDK отсутствие согласия и продолжает рекламные запросы; доступность и обработка данных зависят от правил SDK.")
         Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){
             Text("Мне исполнилось 18 лет",Modifier.weight(1f))
             Switch(preferences.adultAdsConfirmed,{preferences.confirmAdultAds(it)})
@@ -48,11 +50,24 @@ import com.yandex.mobile.ads.common.YandexAds
         )
     }else Text("Персонализированная реклама не используется при возрастной категории 0+ или 6+.")
 }
+// The same placement can be recreated on tab changes; don't request more often than RSYA allows.
+private object BannerRequestGate {
+    private var lastRequest:Long?=null
+    suspend fun awaitSlot(){
+        while(true){
+            val now=SystemClock.elapsedRealtime()
+            val wait=lastRequest?.let{(30_000L-(now-it)).coerceAtLeast(0L)}?:0L
+            if(wait==0L){lastRequest=now;return}
+            delay(wait)
+        }
+    }
+}
 @Composable fun OptionalBanner(ready:Boolean){
     if(BuildConfig.BANNER_ID.isBlank())return
     val context=LocalContext.current
     var failed by remember{mutableStateOf(false)}
     var loaded by remember{mutableStateOf(false)}
+    LaunchedEffect(ready,failed){if(ready&&failed){delay(60_000L);loaded=false;failed=false}}
     if(ready&&!failed){
         BoxWithConstraints(Modifier.fillMaxWidth()){
             val width=maxWidth.value.toInt()
@@ -63,14 +78,17 @@ import com.yandex.mobile.ads.common.YandexAds
                     setAdSize(BannerAdSize.inline(context,width,100))
                     setBannerAdEventListener(object:BannerAdEventListener{
                         override fun onAdLoaded(){loaded=true;visibility=View.VISIBLE}
-                        override fun onAdFailedToLoad(adRequestError:AdRequestError){failed=true;visibility=View.GONE}
+                        override fun onAdFailedToLoad(adRequestError:AdRequestError){loaded=false;failed=true;visibility=View.GONE}
                         override fun onAdClicked(){}
                         override fun onImpression(impressionData:ImpressionData?){}
                     })
                 }}.getOrNull()
             } ?: return@BoxWithConstraints
+            LaunchedEffect(view){
+                BannerRequestGate.awaitSlot()
+                runCatching{view.loadAd(AdRequest.Builder(BuildConfig.BANNER_ID).build())}.onFailure{loaded=false;failed=true}
+            }
             DisposableEffect(view){
-                runCatching{view.loadAd(AdRequest.Builder(BuildConfig.BANNER_ID).build())}.onFailure{failed=true}
                 onDispose{runCatching{view.setBannerAdEventListener(null);view.destroy()}}
             }
             Column(Modifier.fillMaxWidth().padding(bottom=if(loaded)UiSpacing.Block else 0.dp),verticalArrangement=Arrangement.spacedBy(if(loaded)UiSpacing.Tight else 0.dp)){
