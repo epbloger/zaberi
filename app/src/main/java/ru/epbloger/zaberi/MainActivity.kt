@@ -124,7 +124,7 @@ class MainActivity:ComponentActivity(){
             colors=TopAppBarDefaults.topAppBarColors(containerColor=MaterialTheme.colorScheme.background)
         )},
         bottomBar={if(order==null&&settingsPage.isEmpty())NavigationBar(windowInsets=WindowInsets(0,0,0,0),containerColor=MaterialTheme.colorScheme.surface){nav.forEachIndexed{i,s->NavigationBarItem(selected=tab==i,onClick={tab=i;searchVisible=false},icon={Icon(icons[i],s)},label={Text(s,style=MaterialTheme.typography.labelSmall)})}}},
-        floatingActionButton={if(order==null&&tab==0)ExtendedFloatingActionButton(onClick={imported="";add=true},icon={Icon(Icons.Default.Add,null)},text={Text("Добавить заказ")})}
+        floatingActionButton={if(order==null&&tab==0)ExtendedFloatingActionButton(onClick={imported="";add=true},modifier=Modifier.testTag("new_order"),icon={Icon(Icons.Default.Add,null)},text={Text("Добавить заказ")})}
     ){pad->
         Box(Modifier.fillMaxSize().padding(pad)){
             when{order!=null->Detail(order,history.filter{it.orderId==order.id},vm,{selected=null});tab==0->Orders(orders,{selected=it.id},{vm.act(it.id,"received")},searchVisible,{imported="";add=true},preferences.personalizedAds);tab==1->CalendarPage(orders,{selected=it.id});tab==2->Stats(orders,tx);else->SettingsPage(preferences,catalog,vm,settingsPage,{settingsPage=it})}

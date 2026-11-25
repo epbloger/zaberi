@@ -52,7 +52,7 @@ internal fun AdaptiveActionScreen(title:String,close:()->Unit,action:@Composable
         Column(Modifier.fillMaxSize(),horizontalAlignment=Alignment.CenterHorizontally){
             Row(Modifier.fillMaxWidth().heightIn(min=if(short)48.dp else 56.dp).padding(horizontal=8.dp),verticalAlignment=Alignment.CenterVertically){
                 IconButton(onClick=close){Icon(Icons.Default.Close,"Закрыть")}
-                Text(title,Modifier.weight(1f).padding(end=12.dp),style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
+                Text(title,Modifier.weight(1f).padding(end=12.dp),style=if(short)MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold,maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             }
             Box(Modifier.weight(1f).fillMaxWidth(),contentAlignment=Alignment.TopCenter){
                 Box(Modifier.widthIn(max=720.dp).fillMaxWidth().fillMaxHeight()){content()}
