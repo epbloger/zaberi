@@ -88,6 +88,13 @@ class MainActivity:ComponentActivity(){
     var searchVisible by rememberSaveable{mutableStateOf(false)}
     val snack=remember{SnackbarHostState()}
     val ctx=LocalContext.current
+    val adsReady=rememberAdsReady(preferences.personalizedAds)
+    val adController=remember(ctx,preferences.personalizedAds,adsReady){
+        if(adsReady&&ctx is ComponentActivity&&BuildConfig.INTERSTITIAL_ID.isNotBlank())runCatching{InterstitialController(ctx,BuildConfig.INTERSTITIAL_ID)}.getOrNull() else null
+    }
+    DisposableEffect(adController){runCatching{adController?.preload()};onDispose{adController?.close()}}
+    var adOpportunity by remember{mutableStateOf(false)}
+    var openedStatus by rememberSaveable{mutableStateOf<String?>(null)}
     val notificationPermission=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()){granted->if(granted)Reminders.enqueue(ctx)}
     LaunchedEffect(Unit){
         if(Build.VERSION.SDK_INT>=33&&preferences.enabled&&ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED&&!preferences.notificationAsked){
@@ -96,11 +103,21 @@ class MainActivity:ComponentActivity(){
         }
     }
     LaunchedEffect(Unit){vm.errors.collect{snack.showSnackbar(it)}}
-    LaunchedEffect(savedForm){savedForm?.let{id->add=false;editing=false;tab=0;vm.consumeSavedForm(id)}}
+    LaunchedEffect(savedForm){savedForm?.let{id->if(add&&!editing&&shared==null&&openId==null)adOpportunity=true;add=false;editing=false;tab=0;vm.consumeSavedForm(id)}}
     LaunchedEffect(shared,saving){if(shared!=null&&!saving){selected=null;editing=false;settingsPage="";tab=0;imported=shared;add=true;consume()}}
-    LaunchedEffect(openId,orders,saving){if(!saving&&openId!=null&&orders.any{it.id==openId}){add=false;editing=false;settingsPage="";tab=0;selected=openId;consumeId()}}
+    LaunchedEffect(openId,orders,saving){if(!saving&&openId!=null&&orders.any{it.id==openId}){add=false;editing=false;settingsPage="";tab=0;selected=openId;openedStatus=null;consumeId()}}
     val order=orders.firstOrNull{it.id==selected}
-    BackHandler(enabled=add||editing||order!=null||settingsPage.isNotEmpty()||searchVisible){if(saving)Unit else if(add)add=false else if(editing)editing=false else if(order!=null)selected=null else if(settingsPage.isNotEmpty())settingsPage=if(settingsPage in listOf("Конфиденциальность","Условия использования","Реклама и сторонние сервисы","Разработчик и контакты"))"Юридическая информация" else "" else searchVisible=false}
+    fun closeDetail(){
+        if(tab==0&&openedStatus!=null&&order!=null&&openedStatus!=order.status&&order.state in listOf(Status.READY,Status.RECEIVED,Status.DONE)&&!order.returned&&!order.cancelled)adOpportunity=true
+        openedStatus=null;selected=null
+    }
+    LaunchedEffect(adOpportunity,add,editing,selected,tab,shared,openId){
+        if(adOpportunity){
+            adOpportunity=false
+            if(!add&&!editing&&selected==null&&tab==0&&shared==null&&openId==null&&settingsPage.isEmpty())runCatching{adController?.atNaturalPause()}
+        }
+    }
+    BackHandler(enabled=add||editing||order!=null||settingsPage.isNotEmpty()||searchVisible){if(saving)Unit else if(add)add=false else if(editing)editing=false else if(order!=null)closeDetail() else if(settingsPage.isNotEmpty())settingsPage=if(settingsPage in listOf("Конфиденциальность","Условия использования","Реклама и сторонние сервисы","Разработчик и контакты"))"Юридическая информация" else "" else searchVisible=false}
     val nav=listOf("Заказы","Календарь","Статистика","Настройки")
     val icons=listOf(Icons.Default.Inventory2,Icons.Default.CalendarMonth,Icons.Default.BarChart,Icons.Default.Settings)
     if(add||editing&&order!=null){
@@ -117,7 +134,7 @@ class MainActivity:ComponentActivity(){
         topBar={TopAppBar(
             windowInsets=WindowInsets(0,0,0,0),
             title={Text(order?.name?:if(tab==0)"ЗАБЕРИ." else if(tab==3&&settingsPage.isNotEmpty())settingsPage else nav[tab],fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)},
-            navigationIcon={if(order!=null||settingsPage.isNotEmpty())IconButton(onClick={if(order!=null)selected=null else settingsPage=if(settingsPage in listOf("Конфиденциальность","Условия использования","Реклама и сторонние сервисы","Разработчик и контакты"))"Юридическая информация" else ""}){Icon(Icons.Default.ArrowBack,"Назад")}},
+            navigationIcon={if(order!=null||settingsPage.isNotEmpty())IconButton(onClick={if(order!=null)closeDetail() else settingsPage=if(settingsPage in listOf("Конфиденциальность","Условия использования","Реклама и сторонние сервисы","Разработчик и контакты"))"Юридическая информация" else ""}){Icon(Icons.Default.ArrowBack,"Назад")}},
             actions={if(order!=null)IconButton(onClick={editing=true}){Icon(Icons.Default.Edit,"Редактировать")}else if(tab==0)IconButton(onClick={searchVisible=!searchVisible}){Icon(if(searchVisible)Icons.Default.Close else Icons.Default.Search,"Поиск")}},
             colors=TopAppBarDefaults.topAppBarColors(containerColor=MaterialTheme.colorScheme.background)
         )},
@@ -125,7 +142,7 @@ class MainActivity:ComponentActivity(){
         floatingActionButton={if(order==null&&tab==0)ExtendedFloatingActionButton(containerColor=actionColor(ActionTone.DELIVERY),contentColor=Color.White,onClick={imported="";add=true},modifier=Modifier.testTag("new_order"),icon={Icon(Icons.Default.Add,null)},text={Text("Добавить заказ")})}
     ){pad->
         Box(Modifier.fillMaxSize().padding(pad)){
-            when{order!=null->Detail(order,history.filter{it.orderId==order.id},vm,{selected=null},{editing=true});tab==0->Orders(orders,{selected=it.id},{vm.act(it.id,"received")},searchVisible,{imported="";add=true},preferences.personalizedAds);tab==1->CalendarPage(orders,{selected=it.id});tab==2->Stats(orders,tx);else->SettingsPage(preferences,catalog,vm,settingsPage,{settingsPage=it})}
+            when{order!=null->Detail(order,history.filter{it.orderId==order.id},vm,{selected=null},{editing=true});tab==0->Orders(orders,{selected=it.id;openedStatus=it.status},{vm.act(it.id,"received")},searchVisible,{imported="";add=true},preferences.personalizedAds,adsReady);tab==1->CalendarPage(orders,{selected=it.id;openedStatus=it.status});tab==2->Stats(orders,tx);else->SettingsPage(preferences,catalog,vm,settingsPage,{settingsPage=it})}
         }
     }
 }

@@ -49,7 +49,7 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-@Composable internal fun Orders(orders:List<Order>,open:(Order)->Unit,received:(Order)->Unit,searchVisible:Boolean,addOrder:()->Unit,personalizedAds:Boolean){
+@Composable internal fun Orders(orders:List<Order>,open:(Order)->Unit,received:(Order)->Unit,searchVisible:Boolean,addOrder:()->Unit,personalizedAds:Boolean,adsReady:Boolean){
     var filter by rememberSaveable{mutableStateOf("Активные")}
     var query by rememberSaveable{mutableStateOf("")}
     var shop by rememberSaveable{mutableStateOf("")}
@@ -67,7 +67,7 @@ import java.util.Locale
         if(orders.isNotEmpty())item{OrderFilters(orders,shop,{shop=it},category,{category=it},grouped,{grouped=it})}
         item(key="orders-heading"){
             Column(Modifier.fillMaxWidth()){
-                if(BuildConfig.BANNER_ID.isNotBlank())key(personalizedAds){OptionalBanner(personalizedAds)}
+                if(BuildConfig.BANNER_ID.isNotBlank())key(personalizedAds,adsReady){OptionalBanner(adsReady)}
                 if(visible.isEmpty())EmptyOrders(orders.isEmpty()){if(orders.isEmpty())addOrder() else {filter="Все";shop="";category="";query=""}}
                 else Text(if(filter=="Активные")"Мои заказы" else filter,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
             }

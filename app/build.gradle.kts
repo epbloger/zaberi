@@ -6,10 +6,13 @@ plugins {
 }
 val configuredBannerId = providers.gradleProperty("zaberiBannerId").orElse("").get()
 require(configuredBannerId.isEmpty() || Regex("R-M-[0-9]+-[0-9]+").matches(configuredBannerId)) { "Invalid advertising block identifier" }
+val configuredInterstitialId = providers.gradleProperty("zaberiInterstitialId").orElse("").get()
+require(configuredInterstitialId.isEmpty() || Regex("R-M-[0-9]+-[0-9]+").matches(configuredInterstitialId)) { "Invalid interstitial block identifier" }
+val demoInterstitial = providers.gradleProperty("zaberiDemoInterstitial").orElse("false").get().toBoolean()
 // Distribution APKs are intentionally unsigned. The permanent key never enters CI.
 val distributionCandidate = providers.gradleProperty("zaberiDistributionCandidate").orElse("false").get().toBoolean()
 if (distributionCandidate) {
-    require(configuredBannerId.isNotBlank()) { "A distribution candidate requires a production ad block" }
+    require(configuredBannerId.isNotBlank() && configuredInterstitialId.isNotBlank() && configuredBannerId != configuredInterstitialId) { "A distribution candidate requires two distinct production ad blocks" }
 }
 android {
  namespace = "ru.epbloger.zaberi"
@@ -19,15 +22,19 @@ android {
   minSdk = 26
   targetSdk = 35
   testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-  versionCode = 109
-  versionName = "1.0.1"
+  versionCode = 110
+  versionName = "1.0.2"
   buildConfigField("String","BANNER_ID","\""+configuredBannerId+"\"")
+  buildConfigField("String","INTERSTITIAL_ID","\""+configuredInterstitialId+"\"")
  }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
  kotlinOptions { jvmTarget = "17" }
  buildFeatures { compose = true; buildConfig = true }
  buildTypes {
-  debug { buildConfigField("String","BANNER_ID","\"demo-banner-yandex\"") }
+  debug {
+   buildConfigField("String","BANNER_ID","\"demo-banner-yandex\"")
+   buildConfigField("String","INTERSTITIAL_ID",if(demoInterstitial)"\"demo-interstitial-yandex\"" else "\"\"")
+  }
   release {
    isMinifyEnabled = false
    // Sign locally with Android SDK apksigner only.

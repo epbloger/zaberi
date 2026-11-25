@@ -21,26 +21,18 @@ import com.yandex.mobile.ads.common.YandexAds
     val context=LocalContext.current
     HorizontalDivider()
     Text("Персонализация рекламы",style=MaterialTheme.typography.titleMedium)
-    Text("Реклама показывается по умолчанию. Вы можете разрешить подбор объявлений с учётом интересов или отказаться от него в любой момент. Без согласия персонализация выключена, обычные объявления остаются. SDK Яндекса может обрабатывать технические сведения; приложение не передаёт ему содержимое заказов и не разрешает отслеживание геолокации.")
+    Text("Приложение содержит баннеры и редкие полноэкранные объявления после завершённых действий. Реклама показывается по умолчанию. Вы можете разрешить подбор объявлений с учётом интересов или отказаться от него в любой момент. Без согласия персонализация выключена, обычные объявления остаются. SDK Яндекса может обрабатывать технические сведения; приложение не передаёт ему содержимое заказов и не разрешает отслеживание геолокации.")
     TextButton(onClick={runCatching{context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://yandex.ru/legal/confidential/")))}}){Text("Политика конфиденциальности Яндекса")}
     Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){
         Text("Разрешить персонализацию",Modifier.weight(1f))
         Switch(preferences.personalizedAds,{preferences.personalizedAds(it)})
     }
 }
-@Composable fun OptionalBanner(personalized:Boolean){
+@Composable fun OptionalBanner(ready:Boolean){
     if(BuildConfig.BANNER_ID.isBlank())return
     val context=LocalContext.current
-    var ready by remember{mutableStateOf(false)}
     var failed by remember{mutableStateOf(false)}
     var loaded by remember{mutableStateOf(false)}
-    LaunchedEffect(Unit){
-        runCatching{
-            YandexAds.setUserConsent(personalized)
-            YandexAds.setLocationTracking(false)
-            YandexAds.initialize(context.applicationContext){ready=true}
-        }.onFailure{failed=true}
-    }
     if(ready&&!failed){
         BoxWithConstraints(Modifier.fillMaxWidth()){
             val width=maxWidth.value.toInt()
@@ -67,4 +59,22 @@ import com.yandex.mobile.ads.common.YandexAds
             }
         }
     }
+}
+
+/** Initialize once per consent state, before either advertising format can load. */
+@Composable internal fun rememberAdsReady(personalized:Boolean):Boolean{
+    val context=LocalContext.current.applicationContext
+    val ready=remember(personalized){mutableStateOf(false)}
+    DisposableEffect(context,personalized){
+        var active=true
+        if(BuildConfig.BANNER_ID.isNotBlank()||BuildConfig.INTERSTITIAL_ID.isNotBlank()){
+            runCatching{
+                YandexAds.setUserConsent(personalized)
+                YandexAds.setLocationTracking(false)
+                YandexAds.initialize(context){if(active)ready.value=true}
+            }
+        }
+        onDispose{active=false}
+    }
+    return ready.value
 }
