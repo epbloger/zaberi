@@ -89,6 +89,13 @@ class Model(app: Application): AndroidViewModel(app) {
         log(id,"Уточнена сумма ожидаемого возврата")
         getApplication<Application>().getSystemService(android.app.NotificationManager::class.java).cancel(id.hashCode())
     }
+    fun clearData()=change{
+        dao.clearOrders()
+        dao.clearCatalog()
+        val app=getApplication<Application>()
+        app.getSystemService(android.app.NotificationManager::class.java).cancelAll()
+        app.getSharedPreferences("reminders",android.content.Context.MODE_PRIVATE).edit().clear().apply()
+    }
     fun photos(id:String)=dao.photos(id)
     fun addPhoto(id:String,uri:android.net.Uri)=viewModelScope.launch{
         try{PrivateFiles.addPhoto(getApplication(),id,uri)}catch(e:kotlinx.coroutines.CancellationException){throw e}catch(e:Exception){errors.emit("Не удалось добавить фото: "+(e.message?:"ошибка"))}

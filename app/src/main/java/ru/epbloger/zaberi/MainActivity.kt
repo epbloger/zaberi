@@ -195,7 +195,7 @@ class MainActivity:ComponentActivity(){
     val urgent=active.count{orderPriority(it.state,it.deadline?.let{d->LocalDate.parse(d)},LocalDate.now())==0}
     Column(verticalArrangement=Arrangement.spacedBy(12.dp)){
         Text(LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMMM",Locale("ru"))).replaceFirstChar{it.titlecase(Locale("ru"))},style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
-        Card(shape=RoundedCornerShape(24.dp),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer)){
+        Card(modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(24.dp),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer)){
             Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(5.dp)){
                 Text("Покупки под контролем",style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.onPrimaryContainer)
                 Text(if(active.isEmpty())"Пока нет активных заказов" else "Активных заказов: "+active.size,style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
@@ -230,15 +230,26 @@ class MainActivity:ComponentActivity(){
 }
 @Composable private fun DateField(v:String,set:(String)->Unit,label:String){
     val ctx=LocalContext.current
-    Row(verticalAlignment=Alignment.CenterVertically){
-        OutlinedTextField(v,set,Modifier.weight(1f),label={Text(label)},placeholder={Text("ГГГГ-ММ-ДД")},singleLine=true,isError=!validDate(v))
-        IconButton(onClick={val d=runCatching{LocalDate.parse(v)}.getOrDefault(LocalDate.now());android.app.DatePickerDialog(ctx,{_,y,m,day->set(LocalDate.of(y,m+1,day).toString())},d.year,d.monthValue-1,d.dayOfMonth).show()}){Icon(Icons.Default.CalendarMonth,"Выбрать дату")}
+    val current=runCatching{LocalDate.parse(v)}.getOrNull()
+    val openCalendar:()->Unit={
+        val d=current?:LocalDate.now()
+        android.app.DatePickerDialog(ctx,{_,y,m,day->set(LocalDate.of(y,m+1,day).toString())},d.year,d.monthValue-1,d.dayOfMonth).show()
+    }
+    OutlinedCard(shape=RoundedCornerShape(16.dp),modifier=Modifier.fillMaxWidth(),colors=CardDefaults.outlinedCardColors(containerColor=MaterialTheme.colorScheme.surface)){
+        Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=4.dp),verticalAlignment=Alignment.CenterVertically){
+            Row(Modifier.weight(1f).heightIn(min=58.dp).clickable(role=Role.Button,onClick=openCalendar),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
+                Icon(Icons.Default.CalendarMonth,"Выбрать дату",tint=MaterialTheme.colorScheme.primary)
+                Column(Modifier.weight(1f)){Text(label,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant);Text(if(current==null)"Выбрать дату" else dateText(v),style=MaterialTheme.typography.bodyLarge)}
+            }
+            if(v.isNotBlank())IconButton(onClick={set("")}){Icon(Icons.Default.Close,"Очистить дату")}
+            else IconButton(onClick=openCalendar){Icon(Icons.Default.ChevronRight,"Открыть календарь")}
+        }
     }
 }
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable private fun OrderForm(old:Order?,imported:String,catalog:List<CatalogEntry>,orders:List<Order>,close:()->Unit,save:(Order)->Unit){
     var name by rememberSaveable{mutableStateOf(old?.name?:imported.lineSequence().firstOrNull{!it.contains("http",true)}?.take(120).orEmpty())}
-    var store by rememberSaveable{mutableStateOf(old?.store?:detectStore(imported)?:"Ozon")}
+    var store by rememberSaveable{mutableStateOf(old?.store?:detectStore(imported).orEmpty())}
     var price by rememberSaveable{mutableStateOf(number(old?.price))}
     var paid by rememberSaveable{mutableStateOf((old?.paid?:0)>0)}
     var status by rememberSaveable{mutableStateOf(old?.status?:Status.READY.name)}
@@ -269,7 +280,7 @@ class MainActivity:ComponentActivity(){
             Text("Название, магазин и текущий статус",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             Field(name,{name=it},"Название товара")
             Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(4.dp)){(catalog.filter{it.kind=="store"}.map{it.value}+stores).distinct().take(30).forEach{s->FilterChip(store==s,{if(store!=s)point="";store=s},{Text(s)})}}
-            if(store !in stores || advanced)Field(store,{if(store!=it)point="";store=it},"Магазин")
+            if(store !in stores || advanced)Field(store,{if(store!=it)point="";store=it},"Название магазина")
             else TextButton(onClick={advanced=true;store=""}){Text("Другой магазин")}
             Field(price,{price=it},"Стоимость, ₽ (необязательно)",true)
             if(old==null){
@@ -398,7 +409,9 @@ class MainActivity:ComponentActivity(){
 }
 @Composable private fun SettingsPage(preferences:Preferences,catalog:List<CatalogEntry>,vm:Model,page:String,open:(String)->Unit){
     val ctx=LocalContext.current
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
+    val scroll=rememberScrollState()
+    LaunchedEffect(page){scroll.scrollTo(0)}
+    Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
         when(page){
             ""->{
                 Card(shape=RoundedCornerShape(24.dp),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer)){
@@ -433,7 +446,7 @@ class MainActivity:ComponentActivity(){
 
             }
             "Справочники"->CatalogSettings(catalog,vm,initialExpanded=true)
-            "Мои данные"->BackupPanel()
+            "Мои данные"->{BackupPanel();ClearLocalData(vm)}
             "Юридическая информация"->LegalMenu(open)
             "Конфиденциальность","Условия использования","Реклама и сторонние сервисы","Разработчик и контакты"->LegalDocument(page)
             "О приложении"->{
@@ -560,4 +573,13 @@ class MainActivity:ComponentActivity(){
         }
     }
     if(deleting!=null)AlertDialog(onDismissRequest={deleting=null},title={Text("Убрать из подсказок?")},text={Text("Существующие заказы не изменятся.")},confirmButton={TextButton(onClick={deleting?.let{vm.forgetCatalog(it)};deleting=null}){Text("Убрать")}},dismissButton={TextButton(onClick={deleting=null}){Text("Отмена")}})
+}
+
+@Composable private fun ClearLocalData(vm:Model){
+    var confirm by remember{mutableStateOf(false)}
+    HorizontalDivider()
+    Text("Удаление данных",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+    Text("Можно очистить все заказы, фото, историю, финансовые операции и сохранённые справочники. Ранее экспортированные файлы останутся в выбранных местах.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+    OutlinedButton(onClick={confirm=true},modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Delete,null,tint=MaterialTheme.colorScheme.error);Spacer(Modifier.width(8.dp));Text("Удалить все данные заказов",color=MaterialTheme.colorScheme.error)}
+    if(confirm)AlertDialog(onDismissRequest={confirm=false},title={Text("Удалить все заказы?")},text={Text("Это действие нельзя отменить без резервной копии. Настройки оформления и уведомлений сохранятся.")},confirmButton={TextButton(onClick={vm.clearData();confirm=false}){Text("Удалить всё",color=MaterialTheme.colorScheme.error)}},dismissButton={TextButton(onClick={confirm=false}){Text("Отмена")}})
 }
