@@ -22,10 +22,10 @@ class Preferences(private val context:Context) {
         private set
     val notificationAsked get()=prefs.getBoolean("notificationAsked",false)
     fun markNotificationAsked(){prefs.edit().putBoolean("notificationAsked",true).apply()}
-    var personalizedAds by mutableStateOf(prefs.getBoolean("personalizedAds",false))
-        private set
+    // Public release does not use behavioral advertising, including after upgrades.
+    val personalizedAds:Boolean get()=false
     fun leadDays(value:Int){leadDays=value.coerceIn(0,7);prefs.edit().putInt("leadDays",leadDays).apply();Reminders.enqueue(context)}
     fun overdue(value:Boolean){overdue=value;prefs.edit().putBoolean("overdue",value).apply();Reminders.enqueue(context)}
-    fun personalizedAds(value:Boolean){personalizedAds=value;prefs.edit().putBoolean("personalizedAds",value).remove("adsEnabled").apply();runCatching{com.yandex.mobile.ads.common.YandexAds.setUserConsent(value)}}
+    init { prefs.edit().remove("personalizedAds").remove("adsEnabled").apply() }
     private fun clear(){context.getSystemService(NotificationManager::class.java).cancelAll()}
 }
