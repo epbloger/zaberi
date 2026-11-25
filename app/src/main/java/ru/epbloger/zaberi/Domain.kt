@@ -1,0 +1,30 @@
+package ru.epbloger.zaberi
+import java.math.BigDecimal
+import java.time.LocalDate
+enum class Status(val label: String, val deadlineLabel: String?) {
+    TRANSIT("В пути", "Ожидается доставка"), READY("Можно забрать", "Забрать до"),
+    RECEIVED("Получен", null), RETURN_PLANNED("Запланирован возврат", "Вернуть до"),
+    REFUND("Ожидаются деньги", "Ожидаемый возврат"), DONE("Завершён", null), CANCELLED("Отменён", null);
+    val archived get() = this == DONE || this == CANCELLED
+}
+fun parseMoney(value: String): Long? = try {
+    val normalized = value.trim().replace(" ", "").replace(',', '.')
+    if (normalized.isEmpty()) null else BigDecimal(normalized).movePointRight(2).longValueExact().also { require(it in 0..999999999999L) }
+} catch (_: Exception) { null }
+fun remaining(expected: Long, received: Long): Long { require(expected >= 0 && received in 0..expected); return expected - received }
+fun isOverdue(status: Status, date: LocalDate?, today: LocalDate): Boolean = status.deadlineLabel != null && date != null && date.isBefore(today)
+fun nextStatus(current: Status, event: String, paid: Long = 0L): Status = when (event) {
+    "arrived" -> { require(current == Status.TRANSIT); Status.READY }
+    "received" -> { require(current == Status.READY || current == Status.TRANSIT); Status.RECEIVED }
+    "keep" -> { require(current == Status.RECEIVED); Status.DONE }
+    "return" -> { require(current == Status.RECEIVED || current == Status.DONE); Status.RETURN_PLANNED }
+    "returned" -> { require(current == Status.RETURN_PLANNED); if (paid > 0) Status.REFUND else Status.DONE }
+    "cancel" -> { require(current == Status.TRANSIT || current == Status.READY); if (paid > 0) Status.REFUND else Status.CANCELLED }
+    else -> error("Unknown action")
+}
+fun detectStore(text: String): String? {
+    val url = Regex("https?://[^\\s]+", RegexOption.IGNORE_CASE).find(text)?.value ?: return null
+    val host = runCatching { java.net.URI(url).host?.lowercase() }.getOrNull() ?: return null
+    fun matches(domain: String) = host == domain || host.endsWith(".$domain")
+    return when { matches("ozon.ru") || matches("ozon.com") -> "Ozon"; matches("wildberries.ru") || matches("wb.ru") -> "Wildberries"; matches("market.yandex.ru") -> "Яндекс Маркет"; matches("avito.ru") -> "Авито"; matches("megamarket.ru") -> "Мегамаркет"; matches("aliexpress.ru") -> "AliExpress"; matches("lamoda.ru") -> "Lamoda"; else -> null }
+}
