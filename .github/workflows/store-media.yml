@@ -1,0 +1,47 @@
+name: Store screenshots
+on:
+  push:
+    branches: [store-media]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  screenshots:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      ORG_GRADLE_PROJECT_zaberiStoreAge: '12'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build debug and screenshot instrumentation
+        run: bash .github/scripts/gradle-retry.sh assembleDebug assembleDebugAndroidTest
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Capture actual phone and tablet screens
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: bash .github/scripts/capture-store-media.sh
+      - name: Upload captured screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zaberi-store-screenshots
+          path: store-media/
+          if-no-files-found: error
+          retention-days: 14
