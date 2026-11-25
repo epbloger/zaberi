@@ -35,6 +35,8 @@ class Reminders(context: Context, params: WorkerParameters): CoroutineWorker(con
             val intent=Intent(c,MainActivity::class.java).putExtra("orderId",o.id)
             val pending=PendingIntent.getActivity(c,o.id.hashCode(),intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             manager.notify(o.id.hashCode(),Notification.Builder(c,"deadlines").setSmallIcon(android.R.drawable.ic_popup_reminder)
+                .setVisibility(Notification.VISIBILITY_PRIVATE)
+                .setPublicVersion(Notification.Builder(c,"deadlines").setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle("Забери").setContentText("Проверьте сроки заказов").build())
                 .setContentTitle(o.state.deadlineLabel ?: "Проверь заказ")
                 .setContentText("${o.name} · ${o.store} · $date").setContentIntent(pending).setAutoCancel(true).build())
             prefs.edit().putBoolean(key,true).apply()
