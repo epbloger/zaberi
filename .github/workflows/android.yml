@@ -115,16 +115,27 @@ jobs:
             exit 1
           fi
           mkdir -p distribution
-          cp "$SRC" distribution/zaberi-1.0.2-unsigned.apk
+          cp "$SRC" distribution/zaberi-1.0.3-unsigned.apk
           "$SDK/aapt" dump badging "$SRC" > distribution/apk-info.txt
-          grep -F "package: name='ru.epbloger.zaberi' versionCode='110' versionName='1.0.2'" distribution/apk-info.txt
+          grep -F "package: name='ru.epbloger.zaberi' versionCode='111' versionName='1.0.3'" distribution/apk-info.txt
+          grep -Fx "application-label:'ЗАБЕРИ. — учёт покупок'" distribution/apk-info.txt
+          if grep -q '^application-debuggable' distribution/apk-info.txt; then
+            echo "Distribution APK must not be debuggable" >&2
+            exit 1
+          fi
+          "$SDK/aapt" dump permissions "$SRC" > distribution/apk-permissions.txt
+          "$SDK/aapt" dump xmltree "$SRC" AndroidManifest.xml > distribution/apk-manifest.txt
+          if grep -Fq 'com.google.android.gms.permission.AD_ID' distribution/apk-permissions.txt; then
+            echo "Unexpected Google advertising ID permission" >&2
+            exit 1
+          fi
           printf '%s\n' "$GITHUB_SHA" > distribution/commit.txt
-          (cd distribution && sha256sum zaberi-1.0.2-unsigned.apk > SHA256SUMS.txt)
+          (cd distribution && sha256sum zaberi-1.0.3-unsigned.apk > SHA256SUMS.txt)
       - name: Upload unsigned distribution APK
         if: ${{ github.event_name == 'pull_request' && github.head_ref == 'release-1.0-dev' && github.event.pull_request.head.repo.full_name == github.repository }}
         uses: actions/upload-artifact@v4
         with:
-          name: zaberi-1.0.2-unsigned
+          name: zaberi-1.0.3-unsigned
           path: distribution/
           if-no-files-found: error
           retention-days: 14

@@ -22,8 +22,8 @@ android {
   minSdk = 26
   targetSdk = 35
   testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-  versionCode = 110
-  versionName = "1.0.2"
+  versionCode = 111
+  versionName = "1.0.3"
   buildConfigField("String","BANNER_ID","\""+configuredBannerId+"\"")
   buildConfigField("String","INTERSTITIAL_ID","\""+configuredInterstitialId+"\"")
  }

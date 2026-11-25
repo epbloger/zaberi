@@ -4,7 +4,7 @@
 <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
 <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-<application android:label="ЗАБЕРИ." android:icon="@drawable/ic_launcher" android:theme="@style/AppTheme" android:allowBackup="false" android:usesCleartextTraffic="false" android:supportsRtl="true">
+<application android:label="ЗАБЕРИ. — учёт покупок" android:icon="@drawable/ic_launcher" android:theme="@style/AppTheme" android:allowBackup="false" android:usesCleartextTraffic="false" android:supportsRtl="true">
 <provider android:name=".CameraPhotoProvider" android:authorities="${applicationId}.camera" android:exported="false" android:grantUriPermissions="true">
 <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/camera_paths"/>
 </provider>
