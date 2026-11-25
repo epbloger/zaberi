@@ -88,8 +88,8 @@ class MainActivity:ComponentActivity(){
     var searchVisible by rememberSaveable{mutableStateOf(false)}
     val snack=remember{SnackbarHostState()}
     val ctx=LocalContext.current
-    val adsReady=rememberAdsReady(preferences.personalizedAds)
-    val adController=remember(ctx,preferences.personalizedAds,adsReady){
+    val adsReady=rememberAdsReady(preferences.personalizedAds,!preferences.adultAdsEligible)
+    val adController=remember(ctx,preferences.personalizedAds,preferences.adultAdsEligible,adsReady){
         if(adsReady&&ctx is ComponentActivity&&BuildConfig.INTERSTITIAL_ID.isNotBlank())runCatching{InterstitialController(ctx,BuildConfig.INTERSTITIAL_ID)}.getOrNull() else null
     }
     DisposableEffect(adController){runCatching{adController?.preload()};onDispose{adController?.close()}}
@@ -142,7 +142,7 @@ class MainActivity:ComponentActivity(){
         floatingActionButton={if(order==null&&tab==0)ExtendedFloatingActionButton(containerColor=actionColor(ActionTone.DELIVERY),contentColor=Color.White,onClick={imported="";add=true},modifier=Modifier.testTag("new_order"),icon={Icon(Icons.Default.Add,null)},text={Text("Добавить заказ")})}
     ){pad->
         Box(Modifier.fillMaxSize().padding(pad)){
-            when{order!=null->Detail(order,history.filter{it.orderId==order.id},vm,{selected=null},{editing=true});tab==0->Orders(orders,{selected=it.id;openedStatus=it.status},{vm.act(it.id,"received")},searchVisible,{imported="";add=true},preferences.personalizedAds,adsReady);tab==1->CalendarPage(orders,{selected=it.id;openedStatus=it.status});tab==2->Stats(orders,tx);else->SettingsPage(preferences,catalog,vm,settingsPage,{settingsPage=it})}
+            when{order!=null->Detail(order,history.filter{it.orderId==order.id},vm,{selected=null},{editing=true});tab==0->key(preferences.adultAdsEligible,preferences.personalizedAds){Orders(orders,{selected=it.id;openedStatus=it.status},{vm.act(it.id,"received")},searchVisible,{imported="";add=true},preferences.personalizedAds,adsReady)};tab==1->CalendarPage(orders,{selected=it.id;openedStatus=it.status});tab==2->Stats(orders,tx);else->SettingsPage(preferences,catalog,vm,settingsPage,{settingsPage=it})}
         }
     }
 }
