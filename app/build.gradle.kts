@@ -21,7 +21,7 @@ android {
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
  kotlinOptions { jvmTarget = "17" }
  buildFeatures { compose = true; buildConfig = true }
- buildTypes { debug { buildConfigField("String","BANNER_ID","\"demo-banner-yandex\"") } }
+ buildTypes { debug { buildConfigField("String","BANNER_ID","\"demo-banner-yandex\"") }; release { isMinifyEnabled = false } }
 }
 dependencies {
  implementation("com.yandex.android:mobileads:8.7.0")

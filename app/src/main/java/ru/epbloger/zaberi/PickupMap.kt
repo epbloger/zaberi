@@ -95,10 +95,10 @@ private object MapTiles {
             }
         })
     }
-    fun clear(context:Context){runCatching{http(context).cache?.evictAll()}}
+    fun clear(context:Context):Boolean=runCatching{http(context).cache?.evictAll();true}.getOrDefault(false)
 
 }
-fun clearPickupMapCache(context:Context){MapTiles.clear(context)}
+fun clearPickupMapCache(context:Context):Boolean=MapTiles.clear(context)
 private fun visibleTiles(x:Double,y:Double,z:Int,size:IntSize,tilePx:Float):List<VisibleTile>{
     if(size.width<=0||size.height<=0)return emptyList()
     val n=1 shl z

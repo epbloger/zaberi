@@ -653,7 +653,7 @@ class MainActivity:ComponentActivity(){
 @Composable private fun MapCacheSettings(){
     val ctx=LocalContext.current
     val scope=rememberCoroutineScope()
-    var cleared by remember{mutableStateOf(false)}
-    OutlinedButton(onClick={scope.launch{withContext(kotlinx.coroutines.Dispatchers.IO){clearPickupMapCache(ctx)};cleared=true}},modifier=Modifier.fillMaxWidth()){Text("Очистить кэш карты")}
-    if(cleared)Text("Кэш карты очищен. Сохранённые ПВЗ не изменились.",style=MaterialTheme.typography.bodySmall)
+    var cacheMessage by remember{mutableStateOf("")}
+    OutlinedButton(onClick={scope.launch{cacheMessage=if(withContext(kotlinx.coroutines.Dispatchers.IO){clearPickupMapCache(ctx)})"Кэш карты очищен. Сохранённые ПВЗ не изменились." else "Не удалось очистить кэш карты."}},modifier=Modifier.fillMaxWidth()){Text("Очистить кэш карты")}
+    if(cacheMessage.isNotBlank())Text(cacheMessage,style=MaterialTheme.typography.bodySmall)
 }
