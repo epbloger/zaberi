@@ -51,6 +51,9 @@ jobs:
       - name: Compile Android integration tests
         run: gradle --no-daemon --stacktrace assembleDebugAndroidTest
       - name: Check unsigned release packaging
+        env:
+          ORG_GRADLE_PROJECT_zaberiBannerId: ${{ (github.event_name == 'pull_request' && github.head_ref == 'release-1.0-dev' && github.event.pull_request.head.repo.full_name == github.repository) && 'R-M-20506199-1' || '' }}
+          ORG_GRADLE_PROJECT_zaberiDistributionCandidate: ${{ github.event_name == 'pull_request' && github.head_ref == 'release-1.0-dev' && github.event.pull_request.head.repo.full_name == github.repository }}
         run: gradle --no-daemon --stacktrace assembleRelease lintRelease
       - name: Enable KVM for release candidate tests
         id: emulator_prerequisites
@@ -95,6 +98,33 @@ jobs:
         with:
           name: zaberi-debug
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: Prepare unsigned distribution APK
+        if: ${{ github.event_name == 'pull_request' && github.head_ref == 'release-1.0-dev' && github.event.pull_request.head.repo.full_name == github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:?}/build-tools/35.0.0"
+          SRC=app/build/outputs/apk/release/app-release-unsigned.apk
+          test -f "$SRC"
+          "$SDK/zipalign" -c -P 16 4 "$SRC"
+          if "$SDK/apksigner" verify "$SRC" >/dev/null 2>&1; then
+            echo "Unexpected signed release APK" >&2
+            exit 1
+          fi
+          mkdir -p distribution
+          cp "$SRC" distribution/zaberi-1.0.0-unsigned.apk
+          "$SDK/aapt" dump badging "$SRC" > distribution/apk-info.txt
+          grep -F "package: name='ru.epbloger.zaberi' versionCode='108' versionName='1.0.0'" distribution/apk-info.txt
+          printf '%s\n' "$GITHUB_SHA" > distribution/commit.txt
+          (cd distribution && sha256sum zaberi-1.0.0-unsigned.apk > SHA256SUMS.txt)
+      - name: Upload unsigned distribution APK
+        if: ${{ github.event_name == 'pull_request' && github.head_ref == 'release-1.0-dev' && github.event.pull_request.head.repo.full_name == github.repository }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: zaberi-1.0.0-unsigned
+          path: distribution/
           if-no-files-found: error
           retention-days: 14
       - name: Upload test reports
