@@ -58,7 +58,7 @@ import java.util.Locale
             ""->{
                 Card(shape=RoundedCornerShape(24.dp),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer)){
                     Row(Modifier.fillMaxWidth().padding(20.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)){
-                        Icon(Icons.Default.Inventory2,null,Modifier.size(38.dp));Column{Text("Забери",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold);Text("Все покупки под контролем",style=MaterialTheme.typography.bodySmall)}
+                        Icon(Icons.Default.Inventory2,null,Modifier.size(38.dp));Column{Text("ЗАБЕРИ.",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold);Text("Все покупки под контролем",style=MaterialTheme.typography.bodySmall)}
                     }
                 }
                 SettingsLink(Icons.Default.Notifications,"Уведомления","Сроки и конфиденциальность"){open("Уведомления")}
@@ -98,7 +98,7 @@ import java.util.Locale
             "Юридическая информация"->LegalMenu(open)
             "Конфиденциальность","Условия использования","Реклама и сторонние сервисы","Разработчик и контакты"->LegalDocument(page)
             "О приложении"->{
-                Text("Забери "+BuildConfig.VERSION_NAME,style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
+                Text("ЗАБЕРИ. "+BuildConfig.VERSION_NAME,style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
                 Text("Кандидат на релиз. Заказы хранятся на устройстве. Интернет и учётная запись для основных функций не нужны. Реклама помогает поддерживать приложение.")
                 SettingsLink(Icons.Default.Feedback,"Написать в поддержку",SUPPORT_EMAIL){openSupportEmail(ctx)}
                 SettingsLink(Icons.Default.Gavel,"Юридическая информация","Документы приложения"){open("Юридическая информация")}
@@ -141,9 +141,9 @@ import java.util.Locale
     HorizontalDivider()
     Text("Резервное копирование",style=MaterialTheme.typography.titleLarge)
     Text("Копия заказов, операций, истории, справочников и фото защищена паролем. Восстановление заменяет текущие заказы. Пароль восстановить нельзя.")
-    OutlinedButton(enabled=!busy,onClick={action="export";password="";confirm=""},modifier=Modifier.fillMaxWidth()){Text("Создать защищённую копию")}
-    OutlinedButton(enabled=!busy,onClick={action="restore";password="";confirm=""},modifier=Modifier.fillMaxWidth()){Text("Восстановить из копии")}
-    OutlinedButton(enabled=!busy,onClick={action="csv"},modifier=Modifier.fillMaxWidth()){Text("Экспорт операций CSV")}
+    OutlinedButton(enabled=!busy,onClick={action="export";password="";confirm=""},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)){Text("Создать защищённую копию")}
+    OutlinedButton(enabled=!busy,onClick={action="restore";password="";confirm=""},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)){Text("Восстановить из копии")}
+    OutlinedButton(enabled=!busy,onClick={action="csv"},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)){Text("Экспорт операций CSV")}
     if(busy)LinearProgressIndicator(Modifier.fillMaxWidth())
     if(message.isNotBlank())Text(message)
     if(action.isNotEmpty()){
@@ -204,6 +204,6 @@ import java.util.Locale
     val ctx=LocalContext.current
     val scope=rememberCoroutineScope()
     var cacheMessage by remember{mutableStateOf("")}
-    OutlinedButton(onClick={scope.launch{cacheMessage=if(withContext(kotlinx.coroutines.Dispatchers.IO){clearPickupMapCache(ctx)})"Кэш карты очищен. Сохранённые ПВЗ не изменились." else "Не удалось очистить кэш карты."}},modifier=Modifier.fillMaxWidth()){Text("Очистить кэш карты")}
+    OutlinedButton(onClick={scope.launch{cacheMessage=if(withContext(kotlinx.coroutines.Dispatchers.IO){clearPickupMapCache(ctx)})"Кэш карты очищен. Сохранённые ПВЗ не изменились." else "Не удалось очистить кэш карты."}},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)){Text("Очистить кэш карты")}
     if(cacheMessage.isNotBlank())Text(cacheMessage,style=MaterialTheme.typography.bodySmall)
 }

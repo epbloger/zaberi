@@ -3,6 +3,9 @@ package ru.epbloger.zaberi
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
+import java.io.ByteArrayInputStream
 import android.net.Uri
 import android.util.Base64
 import androidx.room.withTransaction
@@ -67,7 +70,9 @@ object PrivateFiles{
         require(bounds.outWidth>0&&bounds.outHeight>0){"Неподдерживаемое изображение"}
         var sample=1
         while((maxOf(bounds.outWidth,bounds.outHeight).toLong()+sample-1)/sample>1200)sample*=2
-        val bitmap=BitmapFactory.decodeByteArray(raw,0,raw.size,BitmapFactory.Options().apply{inSampleSize=sample})?:error("Не удалось открыть изображение")
+        val decoded=BitmapFactory.decodeByteArray(raw,0,raw.size,BitmapFactory.Options().apply{inSampleSize=sample})?:error("Не удалось открыть изображение")
+        val bitmap=try{orientPhoto(decoded,raw)}catch(e:Exception){decoded.recycle();throw e}
+        if(bitmap!==decoded)decoded.recycle()
         val bytes=try{
             var result=ByteArray(0)
             for(quality in listOf(82,65,45,25)){
@@ -131,4 +136,19 @@ object PrivateFiles{
             tx.sortedBy{it.date}.forEach{t->val o=orders[t.orderId];w.write(listOf(cell(t.date),cell(o?.store.orEmpty()),cell(o?.name.orEmpty()),java.math.BigDecimal.valueOf(t.amount,2).toPlainString().replace('.',',')).joinToString(";")+"\r\n")}
         }?:error("Не удалось записать файл")
     }
+}
+internal fun orientPhoto(bitmap:Bitmap,raw:ByteArray):Bitmap {
+    val orientation=runCatching{ExifInterface(ByteArrayInputStream(raw)).getAttributeInt(ExifInterface.TAG_ORIENTATION,ExifInterface.ORIENTATION_NORMAL)}.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+    val matrix=Matrix()
+    when(orientation){
+        ExifInterface.ORIENTATION_FLIP_HORIZONTAL->matrix.setScale(-1f,1f)
+        ExifInterface.ORIENTATION_ROTATE_180->matrix.setRotate(180f)
+        ExifInterface.ORIENTATION_FLIP_VERTICAL->matrix.setScale(1f,-1f)
+        ExifInterface.ORIENTATION_TRANSPOSE->{matrix.setRotate(90f);matrix.postScale(-1f,1f)}
+        ExifInterface.ORIENTATION_ROTATE_90->matrix.setRotate(90f)
+        ExifInterface.ORIENTATION_TRANSVERSE->{matrix.setRotate(-90f);matrix.postScale(-1f,1f)}
+        ExifInterface.ORIENTATION_ROTATE_270->matrix.setRotate(-90f)
+        else->return bitmap
+    }
+    return Bitmap.createBitmap(bitmap,0,0,bitmap.width,bitmap.height,matrix,true)
 }

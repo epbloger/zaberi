@@ -107,7 +107,7 @@ import java.util.Locale
                 Icon(Icons.Default.Schedule,null,Modifier.size(16.dp),tint=statusColor)
                 Text(when{overdue->"Срок истёк · "+dateText(o.deadline);days==0L->(o.state.deadlineLabel?:"Срок")+": сегодня";days==1L->(o.state.deadlineLabel?:"Срок")+": завтра";else->(o.state.deadlineLabel?:"Срок")+": "+dateText(o.deadline)},color=statusColor,style=MaterialTheme.typography.bodySmall)
             }
-            if(quick!=null)FilledTonalButton(onClick=quick,modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Check,null,Modifier.size(18.dp));Spacer(Modifier.width(8.dp));Text("Забрал заказ")}
+            if(quick!=null)FilledTonalButton(onClick=quick,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)){Icon(Icons.Default.Check,null,Modifier.size(18.dp));Spacer(Modifier.width(8.dp));Text("Забрал заказ")}
         }
     }
 }

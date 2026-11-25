@@ -27,6 +27,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -54,6 +55,7 @@ import java.util.Locale
     var date by rememberSaveable(o.id){mutableStateOf("")}
     var amount by rememberSaveable(o.id){mutableStateOf("")}
     val ctx=LocalContext.current
+    val clipboard=androidx.compose.ui.platform.LocalClipboardManager.current
     fun ask(event:String,initial:Long?=null){action=event;date=when(event){"pay","refund"->today();"adjust_refund"->o.deadline.orEmpty();else->""};amount=number(initial)}
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
         Text(o.store,color=MaterialTheme.colorScheme.primary)
@@ -61,24 +63,30 @@ import java.util.Locale
         Metric(o.state.label,if(o.paid>0)"Оплачено: "+money(o.paid) else "Оплата не отмечена",Modifier.fillMaxWidth())
         if(o.state.deadlineLabel!=null)Text(o.state.deadlineLabel+": "+dateText(o.deadline))
         if(o.point.isNotBlank()){
-            Text("Пункт выдачи: "+o.point)
-            OutlinedButton(onClick={openPickupMap(ctx,o.point,o.pointLat,o.pointLon)},modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Map,null);Spacer(Modifier.width(8.dp));Text("Открыть на карте")}
+            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
+                Column(Modifier.weight(1f)){
+                    Text("Пункт выдачи",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(o.point,style=MaterialTheme.typography.bodyLarge)
+                }
+                IconButton(onClick={clipboard.setText(androidx.compose.ui.text.AnnotatedString(o.point))}){Icon(Icons.Default.ContentCopy,"Скопировать адрес ПВЗ")}
+            }
+            OutlinedButton(onClick={openPickupMap(ctx,o.point,o.pointLat,o.pointLon)},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)){Icon(Icons.Default.Map,null);Spacer(Modifier.width(8.dp));Text("Открыть на карте")}
         }
         if(o.category.isNotBlank())Text("Категория: "+o.category)
         if(o.note.isNotBlank())Text(o.note)
-        if(o.link.startsWith("https://")||o.link.startsWith("http://"))OutlinedButton(onClick={runCatching{ctx.startActivity(Intent(Intent.ACTION_VIEW,android.net.Uri.parse(o.link)))}},modifier=Modifier.fillMaxWidth()){Text("Открыть ссылку")}
+        if(o.link.startsWith("https://")||o.link.startsWith("http://"))OutlinedButton(onClick={runCatching{ctx.startActivity(Intent(Intent.ACTION_VIEW,android.net.Uri.parse(o.link)))}},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)){Text("Открыть ссылку")}
         if(o.state==Status.REFUND)Metric("Осталось вернуть",money(remaining(o.expectedRefund,o.receivedRefund)),Modifier.fillMaxWidth())
         when(o.state){
-            Status.TRANSIT->{Primary("Заказ прибыл"){ask("arrived")};OutlinedButton(onClick={ask("received")}){Text("Уже получил")};TextButton(onClick={ask("cancel",o.paid)}){Text("Отменить заказ")}}
+            Status.TRANSIT->{Primary("Заказ прибыл"){ask("arrived")};OutlinedButton(onClick={ask("received")},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)){Text("Уже получил")};TextButton(onClick={ask("cancel",o.paid)}){Text("Отменить заказ")}}
             Status.READY->{Primary("Забрал заказ"){ask("received")};TextButton(onClick={ask("cancel",o.paid)}){Text("Отменить заказ")}}
-            Status.RECEIVED->{Primary("Оставить себе"){vm.act(o.id,"keep")};OutlinedButton(onClick={ask("return")}){Text("Вернуть товар")};TextButton(onClick={ask("undo_received")}){Text("Исправить: заказ ещё не получен")}}
+            Status.RECEIVED->{Primary("Оставить себе"){vm.act(o.id,"keep")};OutlinedButton(onClick={ask("return")},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)){Text("Вернуть товар")};TextButton(onClick={ask("undo_received")}){Text("Исправить: заказ ещё не получен")}}
             Status.RETURN_PLANNED->{Primary("Товар возвращён"){ask("returned",o.paid)};TextButton(onClick={ask("cancel_return")}){Text("Отказаться от возврата")}}
-            Status.REFUND->{Primary("Деньги поступили"){ask("refund",remaining(o.expectedRefund,o.receivedRefund))};OutlinedButton(onClick={ask("adjust_refund",o.expectedRefund)}){Text("Уточнить сумму и срок возврата")}}
-            Status.DONE->if(!o.returned&&!o.cancelled){OutlinedButton(onClick={ask("return")}){Text("Вернуть товар")};TextButton(onClick={ask("reopen")}){Text("Вернуть в активные")}}
+            Status.REFUND->{Primary("Деньги поступили"){ask("refund",remaining(o.expectedRefund,o.receivedRefund))};OutlinedButton(onClick={ask("adjust_refund",o.expectedRefund)},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)){Text("Уточнить сумму и срок возврата")}}
+            Status.DONE->if(!o.returned&&!o.cancelled){OutlinedButton(onClick={ask("return")},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)){Text("Вернуть товар")};TextButton(onClick={ask("reopen")}){Text("Вернуть в активные")}}
             Status.CANCELLED->Unit
         }
-        if(canMarkPayment(o.state,o.paid,o.returned,o.cancelled))OutlinedButton(onClick={ask("pay",o.price)}){Text("Отметить оплату")}
-        Photos(o.id,vm)
+        if(canMarkPayment(o.state,o.paid,o.returned,o.cancelled))OutlinedButton(onClick={ask("pay",o.price)},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)){Text("Отметить оплату")}
+        key(o.id){Photos(o.id,vm)}
         HorizontalDivider()
         Text("История заказа",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
         history.forEach{Text(it.date.take(10)+" · "+it.label,style=MaterialTheme.typography.bodyMedium)}
@@ -108,15 +116,61 @@ import java.util.Locale
     val flow=remember(id){vm.photos(id)}
     val photos by flow.collectAsStateWithLifecycle(initialValue=emptyList())
     var preview by remember{mutableStateOf<String?>(null)}
-    val picker=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()){uri->if(uri!=null)vm.addPhoto(id,uri)}
-    Text("Фото заказа",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+    val context=LocalContext.current
+    val scope=rememberCoroutineScope()
+    var pendingCamera by rememberSaveable{mutableStateOf<String?>(null)}
+    var importing by remember{mutableStateOf(false)}
+    var sourceError by rememberSaveable{mutableStateOf("")}
+    fun importPhoto(uri:android.net.Uri,temp:java.io.File?=null){
+        importing=true;sourceError=""
+        val job=vm.addPhoto(id,uri)
+        job.invokeOnCompletion{temp?.delete()}
+        scope.launch{job.join();importing=false}
+    }
+    val picker=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()){uri->if(uri!=null)importPhoto(uri)}
+    val camera=rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()){success->
+        val file=CameraPhoto.restore(context,pendingCamera)
+        pendingCamera=null
+        if(success&&file!=null&&file.length()>0L){
+            try{importPhoto(CameraPhoto.uri(context,file),file)}
+            catch(e:Exception){file.delete();sourceError="Не удалось открыть снимок."}
+        }else{
+            file?.delete()
+            if(success)sourceError="Камера не сохранила снимок. Попробуйте ещё раз."
+        }
+    }
+    Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
+        Text("Фото заказа",Modifier.weight(1f),style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+        Text("${photos.size}/5",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+    }
     Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){
         photos.forEach{a->
             val bitmap=remember(a.id){android.graphics.BitmapFactory.decodeByteArray(a.jpeg,0,a.jpeg.size)?.asImageBitmap()}
-            if(bitmap!=null)Image(bitmap,"Фото заказа",Modifier.size(90.dp).clickable{preview=a.id})
+            if(bitmap!=null)Image(bitmap,"Фото заказа",Modifier.size(90.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).clickable{preview=a.id},contentScale=androidx.compose.ui.layout.ContentScale.Crop)
         }
     }
-    if(photos.size<5)OutlinedButton(onClick={picker.launch("image/*")}){Icon(Icons.Default.Add,null);Text("Добавить фото")}
+    if(photos.size<5){
+        val enabled=!importing&&pendingCamera==null
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){
+            OutlinedButton(enabled=enabled,onClick={
+                sourceError=""
+                try{picker.launch("image/*")}catch(e:Exception){sourceError="Галерея недоступна."}
+            },modifier=Modifier.weight(1f).heightIn(min=48.dp).testTag("photo_gallery")){Text("Галерея")}
+            OutlinedButton(enabled=enabled,onClick={
+                sourceError=""
+                try{
+                    val file=CameraPhoto.create(context)
+                    pendingCamera=file.name
+                    camera.launch(CameraPhoto.uri(context,file))
+                }catch(e:Exception){
+                    CameraPhoto.restore(context,pendingCamera)?.delete();pendingCamera=null
+                    sourceError="Камера недоступна. Можно выбрать фото из галереи."
+                }
+            },modifier=Modifier.weight(1f).heightIn(min=48.dp).testTag("photo_camera")){Text("Камера")}
+        }
+    }
+    if(importing)LinearProgressIndicator(Modifier.fillMaxWidth())
+    if(sourceError.isNotBlank())Text(sourceError,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
     val current=photos.firstOrNull{it.id==preview}
     if(current!=null){
         val bitmap=remember(current.id){android.graphics.BitmapFactory.decodeByteArray(current.jpeg,0,current.jpeg.size)?.asImageBitmap()}

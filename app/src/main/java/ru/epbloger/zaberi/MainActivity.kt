@@ -116,7 +116,7 @@ class MainActivity:ComponentActivity(){
         snackbarHost={SnackbarHost(snack)},
         topBar={TopAppBar(
             windowInsets=WindowInsets(0,0,0,0),
-            title={Text(order?.name?:if(tab==0)"Забери" else if(tab==3&&settingsPage.isNotEmpty())settingsPage else nav[tab],fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)},
+            title={Text(order?.name?:if(tab==0)"ЗАБЕРИ." else if(tab==3&&settingsPage.isNotEmpty())settingsPage else nav[tab],fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)},
             navigationIcon={if(order!=null||settingsPage.isNotEmpty())IconButton(onClick={if(order!=null)selected=null else settingsPage=if(settingsPage in listOf("Конфиденциальность","Условия использования","Реклама и сторонние сервисы","Разработчик и контакты"))"Юридическая информация" else ""}){Icon(Icons.Default.ArrowBack,"Назад")}},
             actions={if(order!=null)IconButton(onClick={editing=true}){Icon(Icons.Default.Edit,"Редактировать")}else if(tab==0)IconButton(onClick={searchVisible=!searchVisible}){Icon(if(searchVisible)Icons.Default.Close else Icons.Default.Search,"Поиск")}},
             colors=TopAppBarDefaults.topAppBarColors(containerColor=MaterialTheme.colorScheme.background)
