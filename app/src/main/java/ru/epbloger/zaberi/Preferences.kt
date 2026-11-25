@@ -32,11 +32,15 @@ class Preferences(private val context:Context) {
     fun confirmAdultAds(value:Boolean){
         adultAdsConfirmed=value
         if(!value)adConsent=false
-        prefs.edit().putBoolean("adultAdsConfirmed_v1",value).putBoolean("adConsent_v1",adConsent).apply()
+        prefs.edit().putBoolean("adultAdsConfirmed_v1",value).putBoolean("adConsent_v1",adConsent).apply {
+            if(!value) remove("adConsentAt_v1")
+        }.apply()
     }
     fun setAdConsent(value:Boolean){
         adConsent=value&&adultAdsEligible
-        prefs.edit().putBoolean("adConsent_v1",adConsent).apply()
+        prefs.edit().putBoolean("adConsent_v1",adConsent).apply {
+            if(adConsent) putLong("adConsentAt_v1",System.currentTimeMillis()) else remove("adConsentAt_v1")
+        }.apply()
     }
     fun leadDays(value:Int){leadDays=value.coerceIn(0,7);prefs.edit().putInt("leadDays",leadDays).apply();Reminders.enqueue(context)}
     fun overdue(value:Boolean){overdue=value;prefs.edit().putBoolean("overdue",value).apply();Reminders.enqueue(context)}
