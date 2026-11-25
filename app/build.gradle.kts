@@ -14,8 +14,8 @@ android {
   minSdk = 26
   targetSdk = 35
   testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-  versionCode = 103
-  versionName = "1.0.0-rc4"
+  versionCode = 104
+  versionName = "1.0.0-rc5"
   buildConfigField("String","BANNER_ID","\""+configuredBannerId+"\"")
  }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }

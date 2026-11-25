@@ -57,12 +57,7 @@ private fun orderJson(o:Order)=JSONObject().put("id",o.id).put("name",o.name).pu
 private fun JSONObject.optionalDouble(key:String):Double?=if(!has(key)||isNull(key))null else getDouble(key)
 private fun readOrder(j:JSONObject):Order {
     val o=Order(j.getString("id"),j.getString("name"),j.getString("store"),if(j.isNull("price"))null else j.getLong("price"),j.getLong("paid"),j.getString("status"),j.nullString("deadline"),j.getString("point"),j.getString("link"),j.getString("note"),j.getString("created"),j.getLong("expected"),j.getLong("received"),j.getBoolean("cancelled"),j.getBoolean("returned"),j.optString("category",""),j.optionalDouble("pointLat"),j.optionalDouble("pointLon"))
-    require(validPoint(o.pointLat,o.pointLon)&&(o.pointLat==null||o.point.isNotBlank()))
-    require(o.id.isNotBlank()&&o.id.length<=128&&o.name.isNotBlank()&&o.name.length<=200&&o.store.isNotBlank()&&o.store.length<=200&&o.point.length<=200&&o.category.length<=200&&o.link.length<=8192&&o.note.length<=10000&&o.paid in 0..999999999999L)
-    require(o.price==null||o.price in o.paid..999999999999L)
-    require(o.expectedRefund in 0..o.paid&&o.receivedRefund in 0..o.expectedRefund)
-    require(o.state!=Status.REFUND||o.receivedRefund<o.expectedRefund)
-    LocalDate.parse(o.created);o.deadline?.let{LocalDate.parse(it)}
+    validateOrder(o)
     return o
 }
 object PrivateFiles{

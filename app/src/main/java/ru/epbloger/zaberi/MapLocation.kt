@@ -26,14 +26,14 @@ suspend fun locateForMap(context:Context):Location?=withContext(Dispatchers.Main
         .filter{runCatching{manager.isProviderEnabled(it)}.getOrDefault(false)}
     if(providers.isEmpty())return@withContext null
     val recent=providers.mapNotNull{runCatching{manager.getLastKnownLocation(it)}.getOrNull()}
-        .filter{validPoint(it.latitude,it.longitude)&&System.currentTimeMillis()-it.time in 0..120000L}
+        .filter{validPoint(it.latitude,it.longitude)&&android.os.SystemClock.elapsedRealtimeNanos()-it.elapsedRealtimeNanos in 0..120_000_000_000L}
         .minByOrNull{it.accuracy}
     if(recent!=null&&(recent.accuracy<=100f||!fine))return@withContext recent
     val current=withTimeoutOrNull(18000L){
         suspendCancellableCoroutine<Location?>{cont->
             val listener=object:LocationListener{
                 override fun onLocationChanged(location:Location){
-                    if(validPoint(location.latitude,location.longitude)&&cont.isActive){manager.removeUpdates(this);cont.resume(location)}
+                    if(validPoint(location.latitude,location.longitude)&&cont.isActive){runCatching{manager.removeUpdates(this)};cont.resume(location)}
                 }
                 override fun onProviderEnabled(provider:String){}
                 override fun onProviderDisabled(provider:String){}
@@ -44,7 +44,7 @@ suspend fun locateForMap(context:Context):Location?=withContext(Dispatchers.Main
             for(provider in providers){
                 if(runCatching{manager.requestLocationUpdates(provider,0L,0f,listener,Looper.getMainLooper())}.isSuccess)started=true
             }
-            if(!started&&cont.isActive)cont.resume(null)
+            if(!started&&cont.isActive){runCatching{manager.removeUpdates(listener)};cont.resume(null)}
         }
     }
     current?:recent

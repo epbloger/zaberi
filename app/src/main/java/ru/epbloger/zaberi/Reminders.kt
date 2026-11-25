@@ -18,7 +18,7 @@ class Reminders(context: Context, params: WorkerParameters): CoroutineWorker(con
         if(!settings.getBoolean("enabled",true))return Result.success()
         if(LocalTime.now().hour !in settings.getInt("hour",9).coerceIn(7,21)..21)return Result.success()
         val details=settings.getBoolean("details",false)
-        val manager=c.getSystemService(NotificationManager::class.java)
+        val manager=c.getSystemService(NotificationManager::class.java)?:return Result.success()
         if(!manager.areNotificationsEnabled())return Result.success()
         manager.createNotificationChannel(NotificationChannel("deadlines","Сроки заказов",NotificationManager.IMPORTANCE_DEFAULT))
         val prefs=c.getSharedPreferences("reminders",Context.MODE_PRIVATE)
@@ -32,11 +32,12 @@ class Reminders(context: Context, params: WorkerParameters): CoroutineWorker(con
             if(!due || prefs.getBoolean(key,false)) continue
             val intent=Intent(c,MainActivity::class.java).setData(android.net.Uri.parse("zaberi://order/"+o.id)).putExtra("orderId",o.id)
             val pending=PendingIntent.getActivity(c,o.id.hashCode(),intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-            manager.notify(o.id,0,Notification.Builder(c,"deadlines").setSmallIcon(android.R.drawable.ic_popup_reminder)
+            try { manager.notify(o.id,0,Notification.Builder(c,"deadlines").setSmallIcon(android.R.drawable.ic_popup_reminder)
                 .setVisibility(Notification.VISIBILITY_PRIVATE)
                 .setPublicVersion(Notification.Builder(c,"deadlines").setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle("Забери").setContentText("Проверьте сроки заказов").build())
                 .setContentTitle(o.state.deadlineLabel ?: "Проверь заказ")
                 .setContentText(if(details) "${o.name} · ${o.store} · $date" else "Откройте приложение, чтобы проверить заказ").setContentIntent(pending).setAutoCancel(true).build())
+            } catch (_:SecurityException) { return Result.success() }
             prefs.edit().putBoolean(key,true).apply()
         }
         prefs.edit().also { editor -> prefs.all.keys.filterNot { it.endsWith(":$today") }.forEach { editor.remove(it) } }.apply()

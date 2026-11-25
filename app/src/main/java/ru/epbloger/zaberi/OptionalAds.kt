@@ -43,9 +43,10 @@ import com.yandex.mobile.ads.common.YandexAds
     }
     if(ready&&!failed){
         BoxWithConstraints(Modifier.fillMaxWidth()){
-            val width=maxWidth.value.toInt().coerceAtLeast(1)
-            val view=remember(width){
-                BannerAdView(context).apply{
+            val width=maxWidth.value.toInt()
+            if(width<120)return@BoxWithConstraints
+            val view=remember(width,context){
+                runCatching{BannerAdView(context).apply{
                     visibility=View.GONE
                     setAdSize(BannerAdSize.inline(context,width,100))
                     setBannerAdEventListener(object:BannerAdEventListener{
@@ -54,11 +55,11 @@ import com.yandex.mobile.ads.common.YandexAds
                         override fun onAdClicked(){}
                         override fun onImpression(impressionData:ImpressionData?){}
                     })
-                }
-            }
+                }}.getOrNull()
+            } ?: return@BoxWithConstraints
             DisposableEffect(view){
                 runCatching{view.loadAd(AdRequest.Builder(BuildConfig.BANNER_ID).build())}.onFailure{failed=true}
-                onDispose{view.setBannerAdEventListener(null);view.destroy()}
+                onDispose{runCatching{view.setBannerAdEventListener(null);view.destroy()}}
             }
             Column{
                 if(loaded)Text(if(BuildConfig.DEBUG)"Тестовая реклама" else "Реклама",style=MaterialTheme.typography.labelSmall)
