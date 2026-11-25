@@ -101,7 +101,6 @@ import java.util.Locale
                 Text("ЗАБЕРИ. "+BuildConfig.VERSION_NAME,style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
                 Text("Заказы хранятся на устройстве. Интернет и учётная запись для основных функций не нужны. Реклама помогает поддерживать приложение.")
                 Text("Moorkis Development",style=MaterialTheme.typography.titleMedium)
-                Text("Создано с использованием Yandex Mobile Ads SDK.",style=MaterialTheme.typography.bodySmall)
                 ProjectLinks()
                 SettingsLink(Icons.Default.Feedback,"Написать в поддержку",SUPPORT_EMAIL){openSupportEmail(ctx)}
                 SettingsLink(Icons.Default.Gavel,"Юридическая информация","Документы приложения"){open("Юридическая информация")}
