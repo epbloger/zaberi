@@ -50,10 +50,10 @@ class ReleasePresentationTest {
         }
     }
 
-    @Test fun advertisingSettingsOnlyControlPersonalization(){
+    @Test fun advertisingSettingsCannotDisableAdsOrEnablePersonalization(){
         val app=ApplicationProvider.getApplicationContext<Context>()
         val storage=app.getSharedPreferences("advertising_settings_test",Context.MODE_PRIVATE)
-        storage.edit().clear().commit()
+        storage.edit().clear().putBoolean("personalizedAds",true).putBoolean("adsEnabled",false).commit()
         val isolated=object:ContextWrapper(app){
             override fun getSharedPreferences(name:String?,mode:Int):SharedPreferences=storage
         }
@@ -61,14 +61,11 @@ class ReleasePresentationTest {
         try{
             assertFalse(preferences.personalizedAds)
             compose.setContent{MaterialTheme{Column{AdsSettings(preferences)}}}
-            compose.onNodeWithText("Разрешить персонализацию").assertExists()
-            compose.onNodeWithText("Отключить рекламу этой настройкой нельзя.",substring=true).assertExists()
-            compose.onNode(isToggleable()).assertIsOff().performClick().assertIsOn()
-            compose.runOnIdle{assertTrue(Preferences(isolated).personalizedAds)}
-            compose.onNode(isToggleable()).performClick().assertIsOff()
-            compose.runOnIdle{assertFalse(Preferences(isolated).personalizedAds)}
+            compose.onNodeWithText("Персонализированная реклама не используется.",substring=true).assertExists()
+            compose.onNodeWithText("Отключить рекламу в настройках нельзя.",substring=true).assertExists()
+            compose.onAllNodes(isToggleable()).assertCountEquals(0)
         }finally{
-            compose.runOnIdle{preferences.personalizedAds(false);storage.edit().clear().commit()}
+            storage.edit().clear().commit()
         }
     }
 
