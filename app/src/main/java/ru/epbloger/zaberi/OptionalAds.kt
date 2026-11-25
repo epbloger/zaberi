@@ -56,7 +56,7 @@ private object BannerRequestGate {
     suspend fun awaitSlot(){
         while(true){
             val now=SystemClock.elapsedRealtime()
-            val wait=lastRequest?.let{(30_000L-(now-it)).coerceAtLeast(0L)}?:0L
+            val wait=AdPrivacyPolicy.bannerWaitMs(now,lastRequest)
             if(wait==0L){lastRequest=now;return}
             delay(wait)
         }
