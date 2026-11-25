@@ -53,9 +53,9 @@ private fun JSONArray.objects(max:Int):List<JSONObject>{require(length()<=max);r
 private fun array(items:List<JSONObject>)=JSONArray().also{a->items.forEach{a.put(it)}}
 private fun orderJson(o:Order)=JSONObject().put("id",o.id).put("name",o.name).put("store",o.store).put("price",o.price?:JSONObject.NULL)
     .put("paid",o.paid).put("status",o.status).put("deadline",o.deadline?:JSONObject.NULL).put("point",o.point).put("link",o.link)
-    .put("note",o.note).put("created",o.created).put("expected",o.expectedRefund).put("received",o.receivedRefund).put("cancelled",o.cancelled).put("returned",o.returned)
+    .put("note",o.note).put("created",o.created).put("expected",o.expectedRefund).put("received",o.receivedRefund).put("cancelled",o.cancelled).put("returned",o.returned).put("category",o.category)
 private fun readOrder(j:JSONObject):Order {
-    val o=Order(j.getString("id"),j.getString("name"),j.getString("store"),if(j.isNull("price"))null else j.getLong("price"),j.getLong("paid"),j.getString("status"),j.nullString("deadline"),j.getString("point"),j.getString("link"),j.getString("note"),j.getString("created"),j.getLong("expected"),j.getLong("received"),j.getBoolean("cancelled"),j.getBoolean("returned"))
+    val o=Order(j.getString("id"),j.getString("name"),j.getString("store"),if(j.isNull("price"))null else j.getLong("price"),j.getLong("paid"),j.getString("status"),j.nullString("deadline"),j.getString("point"),j.getString("link"),j.getString("note"),j.getString("created"),j.getLong("expected"),j.getLong("received"),j.getBoolean("cancelled"),j.getBoolean("returned"),j.optString("category",""))
     require(o.id.isNotBlank()&&o.id.length<=128&&o.name.isNotBlank()&&o.store.isNotBlank()&&o.paid in 0..999999999999L)
     require(o.price==null||o.price in o.paid..999999999999L)
     require(o.expectedRefund in 0..o.paid&&o.receivedRefund in 0..o.expectedRefund)
@@ -85,9 +85,10 @@ object PrivateFiles{
     suspend fun export(context:Context,uri:Uri,password:String)=withContext(Dispatchers.IO){
         val db=ZaberiDb.get(context);val d=db.orders()
         val snapshot=db.withTransaction{
-            JSONObject().put("version",2).put("orders",array(d.all().map(::orderJson)))
+            JSONObject().put("version",3).put("orders",array(d.all().map(::orderJson)))
                 .put("transactions",array(d.allTransactions().map{JSONObject().put("id",it.id).put("order",it.orderId).put("date",it.date).put("amount",it.amount)}))
                 .put("history",array(d.allHistory().map{JSONObject().put("id",it.id).put("order",it.orderId).put("date",it.date).put("label",it.label)}))
+                .put("catalog",array(d.allCatalog().map{JSONObject().put("id",it.id).put("kind",it.kind).put("parent",it.parent).put("value",it.value)}))
                 .put("photos",array(d.allPhotos().map{JSONObject().put("id",it.id).put("order",it.orderId).put("jpeg",Base64.encodeToString(it.jpeg,Base64.NO_WRAP))}))
         }
         val bytes=encryptBackup(snapshot.toString().toByteArray(Charsets.UTF_8),password)
@@ -95,17 +96,24 @@ object PrivateFiles{
     }
     suspend fun restore(context:Context,uri:Uri,password:String)=withContext(Dispatchers.IO){
         val data=context.contentResolver.openInputStream(uri)?.use{it.bounded(MAX_FILE)}?:error("Не удалось открыть файл")
-        val json=JSONObject(decryptBackup(data,password).toString(Charsets.UTF_8));require(json.getInt("version")==2)
+        val json=JSONObject(decryptBackup(data,password).toString(Charsets.UTF_8));require(json.getInt("version") in 2..3)
         val orders=json.getJSONArray("orders").objects(10000).map(::readOrder)
         val ids=orders.map{it.id}.toSet();require(ids.size==orders.size)
         val transactions=json.getJSONArray("transactions").objects(50000).map{Transaction(it.getString("id"),it.getString("order"),it.getString("date"),it.getLong("amount")).also{t->require(t.orderId in ids&&t.amount in -999999999999L..999999999999L&&t.amount!=0L);LocalDate.parse(t.date)}}
         val histories=json.getJSONArray("history").objects(100000).map{History(it.getString("id"),it.getString("order"),it.getString("date"),it.getString("label")).also{h->require(h.orderId in ids);LocalDateTime.parse(h.date)}}
         val photos=json.getJSONArray("photos").objects(50000).map{Attachment(it.getString("id"),it.getString("order"),Base64.decode(it.getString("jpeg"),Base64.NO_WRAP)).also{a->require(a.orderId in ids&&a.jpeg.size in 1..MAX_PHOTO);val b=BitmapFactory.Options().apply{inJustDecodeBounds=true};BitmapFactory.decodeByteArray(a.jpeg,0,a.jpeg.size,b);require(b.outWidth in 1..1200&&b.outHeight in 1..1200)}}
         require(photos.groupingBy{it.orderId}.eachCount().values.all{it<=5})
+        val catalog=(json.optJSONArray("catalog")?:JSONArray()).objects(30000).map{j->
+            CatalogEntry(j.getString("id"),j.getString("kind"),j.getString("parent"),j.getString("value")).also{c->
+                require(c.id.isNotBlank()&&c.kind in listOf("store","point","category")&&c.value.isNotBlank()&&c.value.length<=200&&(c.kind!="point"||c.parent.isNotBlank()))
+            }
+        }
         val groups=transactions.groupBy{it.orderId}
         orders.forEach{o->val t=groups[o.id].orEmpty();require(t.filter{it.amount>0}.sumOf{it.amount}==o.paid&&-t.filter{it.amount<0}.sumOf{it.amount}==o.receivedRefund)}
         val db=ZaberiDb.get(context);val d=db.orders()
-        db.withTransaction{d.clearOrders();orders.forEach{d.insert(it)};transactions.forEach{d.transaction(it)};histories.forEach{d.history(it)};photos.forEach{d.photo(it)}}
+        db.withTransaction{d.clearOrders();d.clearCatalog();orders.forEach{d.insert(it)};transactions.forEach{d.transaction(it)};histories.forEach{d.history(it)};photos.forEach{d.photo(it)};catalog.forEach{d.remember(it)}
+            orders.forEach{o->d.remember(CatalogEntry(uid(),"store","",o.store));if(o.point.isNotBlank())d.remember(CatalogEntry(uid(),"point",o.store,o.point));if(o.category.isNotBlank())d.remember(CatalogEntry(uid(),"category","",o.category))}
+        }
         context.getSystemService(android.app.NotificationManager::class.java).cancelAll()
         context.getSharedPreferences("reminders",Context.MODE_PRIVATE).edit().clear().apply()
         Reminders.enqueue(context)

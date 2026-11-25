@@ -41,6 +41,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 private val Brand=Color(0xFF5366EB)
+private val categories=listOf("Одежда","Техника","Дом","Красота","Животные","Авто","Спорт","Хобби","Подарки","Продукты","Работа","Другое")
 private val stores=listOf("Ozon","Wildberries","Яндекс Маркет","Мегамаркет","Авито","AliExpress","Lamoda","DNS")
 private fun money(n:Long?)=n?.let{java.text.NumberFormat.getCurrencyInstance(Locale("ru","RU")).format(java.math.BigDecimal.valueOf(it,2))}?:"Цена не указана"
 private fun number(n:Long?)=n?.let{java.math.BigDecimal.valueOf(it,2).toPlainString()}.orEmpty()
@@ -74,6 +75,7 @@ class MainActivity:ComponentActivity(){
     val orders by vm.orders.collectAsStateWithLifecycle()
     val tx by vm.transactions.collectAsStateWithLifecycle()
     val history by vm.history.collectAsStateWithLifecycle()
+    val catalog by vm.catalog.collectAsStateWithLifecycle()
     var tab by rememberSaveable{mutableIntStateOf(0)}
     var selected by rememberSaveable{mutableStateOf<String?>(null)}
     var add by rememberSaveable{mutableStateOf(false)}
@@ -94,11 +96,11 @@ class MainActivity:ComponentActivity(){
         floatingActionButton={if(order==null&&tab==0)ExtendedFloatingActionButton(onClick={imported="";add=true},icon={Icon(Icons.Default.Add,null)},text={Text("Заказ")})}
     ){pad->
         Box(Modifier.fillMaxSize().padding(pad)){
-            when{order!=null->Detail(order,history.filter{it.orderId==order.id},vm,{selected=null});tab==0->Orders(orders,{selected=it.id});tab==1->CalendarPage(orders,{selected=it.id});tab==2->Stats(orders,tx);else->SettingsPage(preferences)}
+            when{order!=null->Detail(order,history.filter{it.orderId==order.id},vm,{selected=null});tab==0->Orders(orders,{selected=it.id},{vm.act(it.id,"received")});tab==1->CalendarPage(orders,{selected=it.id});tab==2->Stats(orders,tx);else->SettingsPage(preferences,catalog,vm)}
         }
     }
-    if(add)OrderForm(null,imported,{add=false}){o->vm.add(o);add=false;tab=0}
-    if(editing&&order!=null)OrderForm(order,"",{editing=false}){o->vm.edit(o.id,o.name,o.store,o.price,o.deadline,o.point,o.link,o.note);editing=false}
+    if(add)OrderForm(null,imported,catalog,orders,{add=false}){o->vm.add(o);add=false;tab=0}
+    if(editing&&order!=null)OrderForm(order,"",catalog,orders,{editing=false}){o->vm.edit(o.id,o.name,o.store,o.price,o.deadline,o.point,o.link,o.note,o.category);editing=false}
 }
 
 @Composable private fun Metric(label:String,value:String,modifier:Modifier=Modifier,accent:Boolean=false){
@@ -106,24 +108,37 @@ class MainActivity:ComponentActivity(){
         Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(6.dp)){Text(label,style=MaterialTheme.typography.labelMedium);Text(value,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)}
     }
 }
-@Composable private fun Orders(orders:List<Order>,open:(Order)->Unit){
+@Composable private fun Orders(orders:List<Order>,open:(Order)->Unit,received:(Order)->Unit){
     var filter by rememberSaveable{mutableStateOf("Активные")}
     var query by rememberSaveable{mutableStateOf("")}
+    var shop by rememberSaveable{mutableStateOf("")}
+    var category by rememberSaveable{mutableStateOf("")}
+    var grouped by rememberSaveable{mutableStateOf(false)}
+    var confirmId by rememberSaveable{mutableStateOf<String?>(null)}
     val active=orders.filterNot{it.state.archived}
     val waiting=active.filter{it.state==Status.REFUND}.sumOf{remaining(it.expectedRefund,it.receivedRefund)}
-    val visible=orders.filter{when(filter){"Активные"->!it.state.archived;"История"->it.state.archived;"Можно забрать"->it.state==Status.READY;"Возвраты"->it.state in listOf(Status.REFUND,Status.RETURN_PLANNED);else->true}}.filter{(it.name+" "+it.store+" "+it.point).contains(query,true)}.sortedWith(compareBy<Order>{it.state.archived}.thenBy{it.deadline?:"9999"})
+    val visible=orders.filter{when(filter){"Активные"->!it.state.archived;"История"->it.state.archived;"В пути"->it.state==Status.TRANSIT;"Можно забрать"->it.state==Status.READY;"Возвраты"->it.state in listOf(Status.REFUND,Status.RETURN_PLANNED);else->true}}.filter{(it.name+" "+it.store+" "+it.point+" "+it.category).contains(query,true)&&(shop.isBlank()||it.store==shop)&&(category.isBlank()||it.category==category)}.sortedWith(compareBy<Order>{it.state.archived}.thenBy{it.deadline?:"9999"})
     LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
         item{Row(horizontalArrangement=Arrangement.spacedBy(12.dp)){Metric("Можно забрать",active.count{it.state==Status.READY}.toString(),Modifier.weight(1f),true);Metric("Ждут возврата",money(waiting),Modifier.weight(1f))}}
         item{OutlinedTextField(query,{query=it},Modifier.fillMaxWidth(),singleLine=true,label={Text("Поиск заказов")},leadingIcon={Icon(Icons.Default.Search,null)})}
-        item{Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("Активные","Можно забрать","Возвраты","История","Все").forEach{FilterChip(selected=filter==it,onClick={filter=it},label={Text(it)})}}}
+        item{Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("Активные","В пути","Можно забрать","Возвраты","История","Все").forEach{FilterChip(selected=filter==it,onClick={filter=it},label={Text(it)})}}}
+        item{OrderFilters(orders,shop,{shop=it},category,{category=it},grouped,{grouped=it})}
         if(visible.isEmpty())item{Text(if(orders.isEmpty())"Добавьте первый заказ — Забери напомнит о сроках." else "Нет подходящих заказов",Modifier.padding(vertical=32.dp))}
-        items(visible,key={it.id}){OrderCard(it){open(it)}}
+        if(grouped){
+            visible.groupBy{if(it.point.isBlank())"Пункт не указан" else it.store+" · "+it.point}.forEach{(title,group)->
+                item(key="group:"+title){Text(title,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold);Text("Можно забрать: "+group.count{it.state==Status.READY},style=MaterialTheme.typography.bodySmall)}
+                items(group,key={it.id}){o->OrderCard(o,if(o.state==Status.READY){{confirmId=o.id}}else null){open(o)}}
+            }
+        }else items(visible,key={it.id}){o->OrderCard(o,if(o.state==Status.READY){{confirmId=o.id}}else null){open(o)}}
         item{Spacer(Modifier.height(72.dp))}
     }
+    val pending=orders.firstOrNull{it.id==confirmId}
+    if(pending!=null)AlertDialog(onDismissRequest={confirmId=null},title={Text("Заказ получен?")},text={Text(pending.name)},confirmButton={Button(onClick={received(pending);confirmId=null}){Text("Забрал")}},dismissButton={TextButton(onClick={confirmId=null}){Text("Отмена")}})
 }
-@Composable private fun OrderCard(o:Order,open:()->Unit){
+@Composable private fun OrderCard(o:Order,quick:(()->Unit)?=null,open:()->Unit){
     val overdue=isOverdue(o.state,o.deadline?.let{LocalDate.parse(it)},LocalDate.now())
     Card(onClick=open,modifier=Modifier.fillMaxWidth()){
+        Column{
         Row(Modifier.padding(16.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
             Surface(shape=RoundedCornerShape(14.dp),color=MaterialTheme.colorScheme.primaryContainer){Icon(Icons.Default.Inventory2,null,Modifier.padding(14.dp))}
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)){
@@ -133,6 +148,8 @@ class MainActivity:ComponentActivity(){
                 if(o.deadline!=null)Text((if(overdue)"Срок истёк" else o.state.deadlineLabel)+": "+dateText(o.deadline),style=MaterialTheme.typography.bodySmall,color=if(overdue)MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Icon(Icons.Default.ChevronRight,null)
+        }
+        if(quick!=null)TextButton(onClick=quick,modifier=Modifier.align(Alignment.End).padding(end=12.dp,bottom=4.dp)){Text("Забрал заказ")}
         }
     }
 }
@@ -146,7 +163,7 @@ class MainActivity:ComponentActivity(){
         IconButton(onClick={val d=runCatching{LocalDate.parse(v)}.getOrDefault(LocalDate.now());android.app.DatePickerDialog(ctx,{_,y,m,day->set(LocalDate.of(y,m+1,day).toString())},d.year,d.monthValue-1,d.dayOfMonth).show()}){Icon(Icons.Default.CalendarMonth,"Выбрать дату")}
     }
 }
-@Composable private fun OrderForm(old:Order?,imported:String,close:()->Unit,save:(Order)->Unit){
+@Composable private fun OrderForm(old:Order?,imported:String,catalog:List<CatalogEntry>,orders:List<Order>,close:()->Unit,save:(Order)->Unit){
     var name by rememberSaveable{mutableStateOf(old?.name?:imported.lineSequence().firstOrNull{!it.contains("http",true)}?.take(120).orEmpty())}
     var store by rememberSaveable{mutableStateOf(old?.store?:detectStore(imported)?:"Ozon")}
     var price by rememberSaveable{mutableStateOf(number(old?.price))}
@@ -156,27 +173,39 @@ class MainActivity:ComponentActivity(){
     var point by rememberSaveable{mutableStateOf(old?.point.orEmpty())}
     var link by rememberSaveable{mutableStateOf(old?.link?:Regex("https?://[^\\s]+").find(imported)?.value.orEmpty())}
     var note by rememberSaveable{mutableStateOf(old?.note.orEmpty())}
+    var category by rememberSaveable{mutableStateOf(old?.category.orEmpty())}
+    var advanced by rememberSaveable{mutableStateOf(old!=null||imported.isNotBlank())}
+    var duplicateConfirmed by rememberSaveable{mutableStateOf(false)}
+    val duplicate=old==null&&link.isNotBlank()&&orders.any{!it.state.archived&&it.link.trim()==link.trim()}
     val parsed=parseMoney(price)
     val state=Status.valueOf(status)
-    val valid=name.isNotBlank()&&store.isNotBlank()&&(price.isBlank()||parsed!=null)&&(!paid||parsed!=null)&&validDate(deadline)&&(old==null||parsed==null||parsed>=old.paid)
+    val valid=name.isNotBlank()&&name.length<=200&&store.isNotBlank()&&store.length<=200&&category.length<=200&&point.length<=200&&(!duplicate||duplicateConfirmed)&&(price.isBlank()||parsed!=null)&&(!paid||parsed!=null)&&validDate(deadline)&&(old==null||parsed==null||parsed>=old.paid)
     AlertDialog(onDismissRequest=close,title={Text(if(old==null)"Новый заказ" else "Редактировать заказ")},text={
         Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){
             Field(name,{name=it},"Название товара")
-            Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(4.dp)){stores.forEach{s->FilterChip(store==s,{store=s},{Text(s)})}}
-            Field(store,{store=it},"Магазин")
+            Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(4.dp)){(catalog.filter{it.kind=="store"}.map{it.value}+stores).distinct().take(30).forEach{s->FilterChip(store==s,{if(store!=s)point="";store=s},{Text(s)})}}
+            Field(store,{if(store!=it)point="";store=it},"Магазин")
             Field(price,{price=it},"Стоимость, ₽",true)
             if(old==null){
                 Row(verticalAlignment=Alignment.CenterVertically){Checkbox(paid,{paid=it});Text("Оплачен")}
                 listOf(Status.TRANSIT,Status.READY,Status.RECEIVED).forEach{s->Row(verticalAlignment=Alignment.CenterVertically,modifier=Modifier.clickable{status=s.name;deadline=""}){RadioButton(status==s.name,{status=s.name;deadline=""});Text(s.label)}}
             }
             if(state.deadlineLabel!=null)DateField(deadline,{deadline=it},state.deadlineLabel)
+            val savedPoints=catalog.filter{it.kind=="point"&&it.parent.equals(store,true)}.map{it.value}.distinct()
+            if(savedPoints.isNotEmpty())Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(4.dp)){savedPoints.forEach{v->FilterChip(point==v,{point=v},{Text(v)})}}
             Field(point,{point=it},"Пункт выдачи")
-            Field(link,{link=it},"Ссылка на товар")
-            OutlinedTextField(note,{note=it},Modifier.fillMaxWidth(),label={Text("Заметка")})
+            TextButton(onClick={advanced=!advanced}){Text(if(advanced)"Скрыть дополнительные сведения" else "Дополнительные сведения")}
+            if(advanced){
+                Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(4.dp)){(catalog.filter{it.kind=="category"}.map{it.value}+categories).distinct().take(30).forEach{v->FilterChip(category==v,{category=if(category==v)"" else v},{Text(v)})}}
+                Field(category,{category=it},"Категория")
+                Field(link,{link=it;duplicateConfirmed=false},"Ссылка на товар")
+                OutlinedTextField(note,{note=it},Modifier.fillMaxWidth(),label={Text("Заметка")})
+            }
+            if(duplicate)Row(verticalAlignment=Alignment.CenterVertically){Checkbox(duplicateConfirmed,{duplicateConfirmed=it});Text("Похожий заказ уже есть. Добавить ещё один?")}
         }
     },confirmButton={Button(enabled=valid,onClick={
         val d=if(state.deadlineLabel!=null)deadline.trim().takeIf{it.isNotEmpty()}else null
-        val o=old?.copy(name=name.trim(),store=store.trim(),price=parsed,deadline=d,point=point.trim(),link=link.trim(),note=note.trim())?:Order(uid(),name.trim(),store.trim(),parsed,if(paid)parsed?:0 else 0,status,d,point.trim(),link.trim(),note.trim(),today())
+        val o=old?.copy(name=name.trim(),store=store.trim(),price=parsed,deadline=d,point=point.trim(),link=link.trim(),note=note.trim(),category=category.trim())?:Order(uid(),name.trim(),store.trim(),parsed,if(paid)parsed?:0 else 0,status,d,point.trim(),link.trim(),note.trim(),today(),category=category.trim())
         save(o)
     }){Text("Сохранить")}},dismissButton={TextButton(onClick=close){Text("Отмена")}})
 }
@@ -193,6 +222,7 @@ class MainActivity:ComponentActivity(){
         Metric(o.state.label,if(o.paid>0)"Оплачено: "+money(o.paid) else "Оплата не отмечена",Modifier.fillMaxWidth())
         if(o.state.deadlineLabel!=null)Text(o.state.deadlineLabel+": "+dateText(o.deadline))
         if(o.point.isNotBlank())Text("Пункт выдачи: "+o.point)
+        if(o.category.isNotBlank())Text("Категория: "+o.category)
         if(o.note.isNotBlank())Text(o.note)
         if(o.link.startsWith("https://")||o.link.startsWith("http://"))OutlinedButton(onClick={runCatching{ctx.startActivity(Intent(Intent.ACTION_VIEW,android.net.Uri.parse(o.link)))}},modifier=Modifier.fillMaxWidth()){Text("Открыть ссылку")}
         if(o.state==Status.REFUND)Metric("Осталось вернуть",money(remaining(o.expectedRefund,o.receivedRefund)),Modifier.fillMaxWidth())
@@ -276,9 +306,12 @@ class MainActivity:ComponentActivity(){
         item{Text("По магазинам",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)}
         val byStore=subset.groupBy{t->orders.firstOrNull{it.id==t.orderId}?.store?:"Другой"}.mapValues{(_,v)->v.sumOf{it.amount}}.toList().sortedByDescending{it.second}
         items(byStore){(store,total)->Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(store);Text(money(total),fontWeight=FontWeight.SemiBold)}}
+        item{Text("По категориям",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)}
+        val byCategory=subset.groupBy{t->orders.firstOrNull{it.id==t.orderId}?.category?.ifBlank{"Без категории"}?:"Без категории"}.mapValues{(_,v)->v.sumOf{it.amount}}.toList().sortedByDescending{it.second}
+        items(byCategory){(category,total)->Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(category);Text(money(total),fontWeight=FontWeight.SemiBold)}}
     }
 }
-@Composable private fun SettingsPage(preferences:Preferences){
+@Composable private fun SettingsPage(preferences:Preferences,catalog:List<CatalogEntry>,vm:Model){
     val ctx=LocalContext.current
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
         Text("Напоминания",style=MaterialTheme.typography.titleLarge)
@@ -299,8 +332,9 @@ class MainActivity:ComponentActivity(){
         }
         HorizontalDivider()
         Text("О приложении",style=MaterialTheme.typography.titleLarge)
-        Text("Забери 0.2.0 · тестовая версия")
+        Text("Забери 0.3.0 · тестовая версия")
         Text("Заказы хранятся на устройстве. Интернет и учётная запись не требуются. Реклама в этой версии не подключена.")
+        CatalogSettings(catalog,vm)
         BackupPanel()
     }
 }
@@ -372,4 +406,43 @@ class MainActivity:ComponentActivity(){
             when(kind){"export"->export.launch("zaberi-"+today()+".zaberi");"restore"->restore.launch(arrayOf("application/octet-stream","*/*"));else->csv.launch("zaberi-"+today()+".csv")}
         }){Text("Продолжить")}},dismissButton={TextButton(onClick={action="";password="";confirm=""}){Text("Отмена")}})
     }
+}
+
+@Composable private fun OrderFilters(orders:List<Order>,shop:String,setShop:(String)->Unit,category:String,setCategory:(String)->Unit,grouped:Boolean,setGrouped:(Boolean)->Unit){
+    var expanded by rememberSaveable{mutableStateOf(false)}
+    Column{
+        Row(verticalAlignment=Alignment.CenterVertically){
+            TextButton(onClick={expanded=!expanded}){Icon(Icons.Default.FilterList,null);Text("Фильтры"+if(shop.isNotBlank()||category.isNotBlank())" •" else "")}
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick={setGrouped(!grouped)}){Text(if(grouped)"Обычный список" else "По ПВЗ")}
+        }
+        if(expanded){
+            Text("Магазин",style=MaterialTheme.typography.labelMedium)
+            Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(4.dp)){FilterChip(shop.isBlank(),{setShop("")},{Text("Все")});orders.map{it.store}.distinct().sorted().forEach{v->FilterChip(shop==v,{setShop(v)},{Text(v)})}}
+            Text("Категория",style=MaterialTheme.typography.labelMedium)
+            Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(4.dp)){FilterChip(category.isBlank(),{setCategory("")},{Text("Все")});orders.map{it.category}.filter{it.isNotBlank()}.distinct().sorted().forEach{v->FilterChip(category==v,{setCategory(v)},{Text(v)})}}
+        }
+    }
+}
+@Composable private fun CatalogSettings(catalog:List<CatalogEntry>,vm:Model){
+    var expanded by rememberSaveable{mutableStateOf(false)}
+    var kind by rememberSaveable{mutableStateOf("store")}
+    var parent by rememberSaveable{mutableStateOf("")}
+    var value by rememberSaveable{mutableStateOf("")}
+    var deleting by rememberSaveable{mutableStateOf<String?>(null)}
+    HorizontalDivider()
+    TextButton(onClick={expanded=!expanded}){Text(if(expanded)"Скрыть справочники" else "Магазины, категории и пункты выдачи")}
+    if(expanded){
+        Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(4.dp)){listOf("store" to "Магазины","category" to "Категории","point" to "ПВЗ").forEach{(k,label)->FilterChip(kind==k,{kind=k;value="";parent=""},{Text(label)})}}
+        if(kind=="point")Field(parent,{parent=it},"Магазин пункта выдачи")
+        Field(value,{value=it},"Добавить название")
+        Button(enabled=value.isNotBlank()&&value.length<=200&&(kind!="point"||parent.isNotBlank()),onClick={vm.addCatalog(kind,parent,value);value=""}){Text("Добавить")}
+        catalog.filter{it.kind==kind}.forEach{entry->
+            Row(verticalAlignment=Alignment.CenterVertically){
+                Text((if(entry.kind=="point")entry.parent+" · " else "")+entry.value,Modifier.weight(1f))
+                IconButton(onClick={deleting=entry.id}){Icon(Icons.Default.Delete,"Убрать из подсказок")}
+            }
+        }
+    }
+    if(deleting!=null)AlertDialog(onDismissRequest={deleting=null},title={Text("Убрать из подсказок?")},text={Text("Существующие заказы не изменятся.")},confirmButton={TextButton(onClick={deleting?.let{vm.forgetCatalog(it)};deleting=null}){Text("Убрать")}},dismissButton={TextButton(onClick={deleting=null}){Text("Отмена")}})
 }

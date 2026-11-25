@@ -9,7 +9,8 @@ data class Order(
     @PrimaryKey val id: String, val name: String, val store: String, val price: Long?,
     val paid: Long, val status: String, val deadline: String?, val point: String,
     val link: String, val note: String, val created: String, val expectedRefund: Long = 0,
-    val receivedRefund: Long = 0, val cancelled: Boolean = false, val returned: Boolean = false
+    val receivedRefund: Long = 0, val cancelled: Boolean = false, val returned: Boolean = false,
+    @ColumnInfo(defaultValue="''") val category:String = ""
 ) { @get:Ignore val state get() = Status.valueOf(status) }
 @Entity(tableName = "transactions", foreignKeys = [ForeignKey(entity=Order::class, parentColumns=["id"], childColumns=["orderId"], onDelete=ForeignKey.CASCADE)], indices=[Index("orderId")])
 data class Transaction(@PrimaryKey val id: String, val orderId: String, val date: String, val amount: Long)
@@ -17,6 +18,8 @@ data class Transaction(@PrimaryKey val id: String, val orderId: String, val date
 data class History(@PrimaryKey val id: String, val orderId: String, val date: String, val label: String)
 @Entity(tableName="attachments",foreignKeys=[ForeignKey(entity=Order::class,parentColumns=["id"],childColumns=["orderId"],onDelete=ForeignKey.CASCADE)],indices=[Index("orderId")])
 data class Attachment(@PrimaryKey val id:String,val orderId:String,val jpeg:ByteArray)
+@Entity(tableName="catalog",indices=[Index(value=["kind","parent","value"],unique=true)])
+data class CatalogEntry(@PrimaryKey val id:String,val kind:String,val parent:String,val value:String)
 @Dao interface OrdersDao {
     @Query("SELECT * FROM orders ORDER BY created DESC, name") fun observe(): Flow<List<Order>>
     @Query("SELECT * FROM orders") suspend fun all(): List<Order>
@@ -36,8 +39,13 @@ data class Attachment(@PrimaryKey val id:String,val orderId:String,val jpeg:Byte
     @Insert suspend fun photo(photo:Attachment)
     @Query("DELETE FROM attachments WHERE id=:id") suspend fun removePhoto(id:String)
     @Query("DELETE FROM orders") suspend fun clearOrders()
+    @Query("SELECT * FROM catalog ORDER BY value COLLATE NOCASE") fun catalog():Flow<List<CatalogEntry>>
+    @Query("SELECT * FROM catalog") suspend fun allCatalog():List<CatalogEntry>
+    @Insert(onConflict=OnConflictStrategy.IGNORE) suspend fun remember(entry:CatalogEntry)
+    @Query("DELETE FROM catalog WHERE id=:id") suspend fun forget(id:String)
+    @Query("DELETE FROM catalog") suspend fun clearCatalog()
 }
-@Database(entities=[Order::class, Transaction::class, History::class, Attachment::class], version=2, exportSchema=true)
+@Database(entities=[Order::class, Transaction::class, History::class, Attachment::class, CatalogEntry::class], version=3, exportSchema=true)
 abstract class ZaberiDb: RoomDatabase() {
     abstract fun orders(): OrdersDao
     companion object {
@@ -47,9 +55,18 @@ abstract class ZaberiDb: RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_attachments_orderId ON attachments(orderId)")
             }
         }
+        private val MIGRATION_2_3=object:Migration(2,3){
+            override fun migrate(db:SupportSQLiteDatabase){
+                db.execSQL("ALTER TABLE orders ADD COLUMN category TEXT NOT NULL DEFAULT ''")
+                db.execSQL("CREATE TABLE IF NOT EXISTS catalog (id TEXT NOT NULL PRIMARY KEY, kind TEXT NOT NULL, parent TEXT NOT NULL, value TEXT NOT NULL)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_catalog_kind_parent_value ON catalog(kind,parent,value)")
+                db.execSQL("INSERT OR IGNORE INTO catalog SELECT lower(hex(randomblob(16))), 'store', '', store FROM orders WHERE trim(store) <> '' GROUP BY store")
+                db.execSQL("INSERT OR IGNORE INTO catalog SELECT lower(hex(randomblob(16))), 'point', store, point FROM orders WHERE trim(point) <> '' GROUP BY store,point")
+            }
+        }
         @Volatile private var instance: ZaberiDb? = null
         fun get(context: Context): ZaberiDb = instance ?: synchronized(this) {
-            instance ?: Room.databaseBuilder(context.applicationContext, ZaberiDb::class.java, "zaberi.db").addMigrations(MIGRATION_1_2).build().also { instance=it }
+            instance ?: Room.databaseBuilder(context.applicationContext, ZaberiDb::class.java, "zaberi.db").addMigrations(MIGRATION_1_2,MIGRATION_2_3).build().also { instance=it }
         }
     }
 }

@@ -16,6 +16,7 @@ class Model(app: Application): AndroidViewModel(app) {
     val orders = dao.observe().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val transactions = dao.transactions().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val history = dao.history().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val catalog = dao.catalog().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val errors = MutableSharedFlow<String>(extraBufferCapacity=1)
     private fun change(block: suspend () -> Unit) = viewModelScope.launch {
         try { db.withTransaction { block() }; Reminders.enqueue(getApplication()) }
@@ -23,17 +24,30 @@ class Model(app: Application): AndroidViewModel(app) {
         catch (e: Exception) { errors.emit(e.message ?: "Не удалось сохранить") }
     }
     private suspend fun log(id: String, label: String) = dao.history(History(uid(),id,LocalDateTime.now().toString(),label))
+    private suspend fun rememberValues(o:Order){
+        dao.remember(CatalogEntry(uid(),"store","",o.store))
+        if(o.point.isNotBlank())dao.remember(CatalogEntry(uid(),"point",o.store,o.point))
+        if(o.category.isNotBlank())dao.remember(CatalogEntry(uid(),"category","",o.category))
+    }
+    fun addCatalog(kind:String,parent:String,value:String)=change{
+        require(kind in listOf("store","point","category")&&value.isNotBlank()&&value.length<=200)
+        require(kind!="point"||parent.isNotBlank())
+        dao.remember(CatalogEntry(uid(),kind,parent.trim(),value.trim()))
+    }
+    fun forgetCatalog(id:String)=change{dao.forget(id)}
     fun add(order: Order) = change {
         require(order.name.isNotBlank() && order.store.isNotBlank())
         dao.insert(order)
+        rememberValues(order)
         if (order.paid > 0) dao.transaction(Transaction(uid(),order.id,today(),order.paid))
         log(order.id,"Добавлен: ${order.state.label}")
     }
-    fun edit(id: String, name: String, store: String, price: Long?, deadline: String?, point: String, link: String, note: String) = change {
+    fun edit(id: String, name: String, store: String, price: Long?, deadline: String?, point: String, link: String, note: String, category:String) = change {
         val o = dao.get(id) ?: error("Заказ не найден")
         require(name.isNotBlank() && store.isNotBlank())
         require(price == null || price >= o.paid) { "Цена не может быть меньше оплаченной суммы" }
-        dao.update(o.copy(name=name,store=store,price=price,deadline=if(o.state.deadlineLabel!=null) deadline else null,point=point,link=link,note=note))
+        val updated=o.copy(name=name,store=store,price=price,deadline=if(o.state.deadlineLabel!=null) deadline else null,point=point,link=link,note=note,category=category)
+        dao.update(updated);rememberValues(updated)
         log(id,"Изменены сведения")
         getApplication<Application>().getSystemService(android.app.NotificationManager::class.java).cancel(id.hashCode())
     }
@@ -62,6 +76,7 @@ class Model(app: Application): AndroidViewModel(app) {
         val state=if(received==o.expectedRefund) (if(o.cancelled) Status.CANCELLED else Status.DONE) else Status.REFUND
         dao.update(o.copy(receivedRefund=received,status=state.name,deadline=if(state==Status.REFUND) o.deadline else null))
         dao.transaction(Transaction(uid(),id,today(),-amount)); log(id,if(state==Status.REFUND) "Частичный возврат" else "Возврат завершён")
+        if(state!=Status.REFUND)getApplication<Application>().getSystemService(android.app.NotificationManager::class.java).cancel(id.hashCode())
     }
     fun photos(id:String)=dao.photos(id)
     fun addPhoto(id:String,uri:android.net.Uri)=viewModelScope.launch{
