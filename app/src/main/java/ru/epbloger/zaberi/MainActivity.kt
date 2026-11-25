@@ -94,7 +94,7 @@ class MainActivity:ComponentActivity(){
         floatingActionButton={if(order==null&&tab==0)ExtendedFloatingActionButton(onClick={imported="";add=true},icon={Icon(Icons.Default.Add,null)},text={Text("Заказ")})}
     ){pad->
         Box(Modifier.fillMaxSize().padding(pad)){
-            when{order!=null->Detail(order,history.filter{it.orderId==order.id},vm,{selected=null});tab==0->Orders(orders,{selected=it.id});tab==1->CalendarPage(orders,{selected=it.id});tab==2->Stats(orders,tx);else->SettingsPage(preferences)}
+            when{order!=null->Detail(order,history.filter{it.orderId==order.id},vm,{selected=null});tab==0->Orders(orders,{selected=it.id},preferences.adsTest);tab==1->CalendarPage(orders,{selected=it.id});tab==2->Stats(orders,tx);else->SettingsPage(preferences)}
         }
     }
     if(add)OrderForm(null,imported,{add=false}){o->vm.add(o);add=false;tab=0}
@@ -106,7 +106,7 @@ class MainActivity:ComponentActivity(){
         Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(6.dp)){Text(label,style=MaterialTheme.typography.labelMedium);Text(value,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)}
     }
 }
-@Composable private fun Orders(orders:List<Order>,open:(Order)->Unit){
+@Composable private fun Orders(orders:List<Order>,open:(Order)->Unit,adsTest:Boolean){
     var filter by rememberSaveable{mutableStateOf("Активные")}
     var query by rememberSaveable{mutableStateOf("")}
     val active=orders.filterNot{it.state.archived}
@@ -118,6 +118,7 @@ class MainActivity:ComponentActivity(){
         item{Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("Активные","Можно забрать","Возвраты","История","Все").forEach{FilterChip(selected=filter==it,onClick={filter=it},label={Text(it)})}}}
         if(visible.isEmpty())item{Text(if(orders.isEmpty())"Добавьте первый заказ — Забери напомнит о сроках." else "Нет подходящих заказов",Modifier.padding(vertical=32.dp))}
         items(visible,key={it.id}){OrderCard(it){open(it)}}
+        if(adsTest && visible.isNotEmpty()) item(key="test-ad"){DemoBanner()}
         item{Spacer(Modifier.height(72.dp))}
     }
 }
@@ -300,7 +301,8 @@ class MainActivity:ComponentActivity(){
         HorizontalDivider()
         Text("О приложении",style=MaterialTheme.typography.titleLarge)
         Text("Забери 0.2.0 · тестовая версия")
-        Text("Заказы хранятся на устройстве. Интернет и учётная запись не требуются. Реклама в этой версии не подключена.")
+        Text("Заказы хранятся на устройстве. Для основных функций интернет не нужен. Эта отдельная сборка проверяет демонстрационную рекламу.")
+        AdTestSettings(preferences)
         BackupPanel()
     }
 }
