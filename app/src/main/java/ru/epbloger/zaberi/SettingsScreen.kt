@@ -66,7 +66,7 @@ import java.util.Locale
                 SettingsLink(Icons.Default.Store,"Справочники","Магазины, категории и ПВЗ"){open("Справочники")}
                 SettingsLink(Icons.Default.Backup,"Мои данные","Резервное копирование и CSV"){open("Мои данные")}
                 SettingsLink(Icons.Default.Gavel,"Юридическая информация","Конфиденциальность, условия и реклама"){open("Юридическая информация")}
-                SettingsLink(Icons.Default.Campaign,"Реклама","Настройка персонализации"){open("Реклама")}
+                SettingsLink(Icons.Default.Campaign,"Реклама","Информация о показах и данных"){open("Реклама")}
                 SettingsLink(Icons.Default.Info,"О приложении","Версия и обратная связь"){open("О приложении")}
             }
             "Уведомления"->{
@@ -100,6 +100,7 @@ import java.util.Locale
             "О приложении"->{
                 Text("ЗАБЕРИ. "+BuildConfig.VERSION_NAME,style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
                 Text("Заказы хранятся на устройстве. Интернет и учётная запись для основных функций не нужны. Реклама помогает поддерживать приложение.")
+                Text("Создано с использованием Yandex Mobile Ads SDK.",style=MaterialTheme.typography.bodySmall)
                 Text("Moorkis Development",style=MaterialTheme.typography.titleMedium)
                 Text("Создано с использованием Yandex Mobile Ads SDK.",style=MaterialTheme.typography.bodySmall)
                 SettingsLink(Icons.Default.Feedback,"Написать в поддержку",SUPPORT_EMAIL){openSupportEmail(ctx)}
