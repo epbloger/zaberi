@@ -27,8 +27,8 @@ class Preferences(private val context:Context) {
         private set
     var adConsent by mutableStateOf(prefs.getBoolean("adConsent_v1",false))
         private set
-    val adultAdsEligible:Boolean get()=BuildConfig.STORE_AGE>=12&&adultAdsConfirmed
-    val personalizedAds:Boolean get()=adultAdsEligible&&adConsent
+    val adultAdsEligible:Boolean get()=AdPrivacyPolicy.adultEligible(BuildConfig.STORE_AGE,adultAdsConfirmed)
+    val personalizedAds:Boolean get()=AdPrivacyPolicy.personalized(BuildConfig.STORE_AGE,adultAdsConfirmed,adConsent)
     fun confirmAdultAds(value:Boolean){
         adultAdsConfirmed=value
         if(!value)adConsent=false
