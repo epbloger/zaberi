@@ -117,7 +117,7 @@ class MainActivity:ComponentActivity(){
     }
     if(add)OrderForm(null,imported,catalog,orders,{add=false}){o->vm.add(o);add=false;tab=0;if(o.deadline!=null&&preferences.enabled&&Build.VERSION.SDK_INT>=33&&ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)notificationPrompt=true}
     if(notificationPrompt)AlertDialog(onDismissRequest={notificationPrompt=false},title={Text("Напомнить о сроке?")},text={Text("Разрешите уведомления, чтобы Забери мог напомнить о получении или возврате. Это можно изменить в настройках.")},confirmButton={Button(onClick={notificationPrompt=false;if(Build.VERSION.SDK_INT>=33)notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)}){Text("Разрешить")}},dismissButton={TextButton(onClick={notificationPrompt=false}){Text("Не сейчас")}})
-    if(editing&&order!=null)OrderForm(order,"",catalog,orders,{editing=false}){o->vm.edit(o.id,o.name,o.store,o.price,o.deadline,o.point,o.link,o.note,o.category);editing=false}
+    if(editing&&order!=null)OrderForm(order,"",catalog,orders,{editing=false}){o->vm.edit(o.id,o.name,o.store,o.price,o.deadline,o.point,o.link,o.note,o.category,o.pointLat,o.pointLon);editing=false}
 }
 
 @Composable private fun Metric(label:String,value:String,modifier:Modifier=Modifier,accent:Boolean=false){
@@ -256,6 +256,8 @@ class MainActivity:ComponentActivity(){
     var status by rememberSaveable{mutableStateOf(old?.status?:Status.READY.name)}
     var deadline by rememberSaveable{mutableStateOf(old?.deadline.orEmpty())}
     var point by rememberSaveable{mutableStateOf(old?.point.orEmpty())}
+    var pointLat by rememberSaveable{mutableStateOf(old?.pointLat)}
+    var pointLon by rememberSaveable{mutableStateOf(old?.pointLon)}
     var link by rememberSaveable{mutableStateOf(old?.link?:Regex("https?://[^\\s]+").find(imported)?.value.orEmpty())}
     var note by rememberSaveable{mutableStateOf(old?.note.orEmpty())}
     var category by rememberSaveable{mutableStateOf(old?.category.orEmpty())}
@@ -264,14 +266,14 @@ class MainActivity:ComponentActivity(){
     val duplicate=old==null&&link.isNotBlank()&&orders.any{!it.state.archived&&it.link.trim()==link.trim()}
     val parsed=parseMoney(price)
     val state=Status.valueOf(status)
-    val valid=name.isNotBlank()&&name.length<=200&&store.isNotBlank()&&store.length<=200&&category.length<=200&&point.length<=200&&link.length<=8192&&note.length<=10000&&(!duplicate||duplicateConfirmed)&&(price.isBlank()||parsed!=null)&&(!paid||parsed!=null)&&validDate(deadline)&&(old==null||parsed==null||parsed>=old.paid)
+    val valid=name.isNotBlank()&&name.length<=200&&store.isNotBlank()&&store.length<=200&&category.length<=200&&point.length<=200&&validPoint(pointLat,pointLon)&&link.length<=8192&&note.length<=10000&&(!duplicate||duplicateConfirmed)&&(price.isBlank()||parsed!=null)&&(!paid||parsed!=null)&&validDate(deadline)&&(old==null||parsed==null||parsed>=old.paid)
     Dialog(onDismissRequest=close,properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)){
       Scaffold(modifier=Modifier.fillMaxSize().imePadding(),containerColor=MaterialTheme.colorScheme.background,
         topBar={TopAppBar(title={Text(if(old==null)"Новый заказ" else "Редактировать",fontWeight=FontWeight.Bold)},navigationIcon={IconButton(onClick=close){Icon(Icons.Default.Close,"Закрыть")}})},
         bottomBar={Surface(shadowElevation=2.dp){Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp)){
             Button(enabled=valid,onClick={
                 val d=if(state.deadlineLabel!=null)deadline.trim().takeIf{it.isNotEmpty()}else null
-                val o=old?.copy(name=name.trim(),store=store.trim(),price=parsed,deadline=d,point=point.trim(),link=link.trim(),note=note.trim(),category=category.trim())?:Order(uid(),name.trim(),store.trim(),parsed,if(paid)parsed?:0 else 0,status,d,point.trim(),link.trim(),note.trim(),today(),category=category.trim())
+                val o=old?.copy(name=name.trim(),store=store.trim(),price=parsed,deadline=d,point=point.trim(),link=link.trim(),note=note.trim(),category=category.trim(),pointLat=pointLat,pointLon=pointLon)?:Order(uid(),name.trim(),store.trim(),parsed,if(paid)parsed?:0 else 0,status,d,point.trim(),link.trim(),note.trim(),today(),category=category.trim(),pointLat=pointLat,pointLon=pointLon)
                 save(o)
             },modifier=Modifier.fillMaxWidth().heightIn(min=52.dp)){Text(if(old==null)"Добавить заказ" else "Сохранить")}
         }}}
@@ -280,9 +282,9 @@ class MainActivity:ComponentActivity(){
             Text("Основное",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
             Text("Название, магазин и текущий статус",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             Field(name,{name=it},"Название товара")
-            Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(4.dp)){(catalog.filter{it.kind=="store"}.map{it.value}+stores).distinct().take(30).forEach{s->FilterChip(store==s,{if(store!=s)point="";store=s},{Text(s)})}}
-            if(store !in stores || advanced)Field(store,{if(store!=it)point="";store=it},"Название магазина")
-            else TextButton(onClick={advanced=true;store=""}){Text("Другой магазин")}
+            Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(4.dp)){(catalog.filter{it.kind=="store"}.map{it.value}+stores).distinct().take(30).forEach{s->FilterChip(store==s,{if(store!=s){point="";pointLat=null;pointLon=null};store=s},{Text(s)})}}
+            if(store !in stores || advanced)Field(store,{if(store!=it){point="";pointLat=null;pointLon=null};store=it},"Название магазина")
+            else TextButton(onClick={advanced=true;store="";point="";pointLat=null;pointLon=null}){Text("Другой магазин")}
             Field(price,{price=it},"Стоимость, ₽ (необязательно)",true)
             if(old==null){
                 Row(verticalAlignment=Alignment.CenterVertically){Checkbox(paid,{paid=it});Text("Оплачен")}
@@ -290,11 +292,9 @@ class MainActivity:ComponentActivity(){
                 listOf(Status.TRANSIT,Status.READY,Status.RECEIVED).forEach{s->Row(verticalAlignment=Alignment.CenterVertically,modifier=Modifier.clickable{status=s.name;deadline=""}){RadioButton(status==s.name,{status=s.name;deadline=""});Text(s.label)}}
             }
             if(state.deadlineLabel!=null){Text("Срок",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold);DateField(deadline,{deadline=it},state.deadlineLabel);Text("Можно указать позже",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
-            val savedPoints=catalog.filter{it.kind=="point"&&it.parent.equals(store,true)}.map{it.value}.distinct()
-            if(savedPoints.isNotEmpty())Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(4.dp)){savedPoints.forEach{v->FilterChip(point==v,{point=v},{Text(v)})}}
+            PickupSelector(store,point,pointLat,pointLon,catalog){address,lat,lon->point=address;pointLat=lat;pointLon=lon}
             TextButton(onClick={advanced=!advanced}){Text(if(advanced)"Скрыть дополнительные сведения" else "Дополнительные сведения")}
             if(advanced){
-                Field(point,{point=it},"Пункт выдачи")
                 Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(4.dp)){(catalog.filter{it.kind=="category"}.map{it.value}+categories).distinct().take(30).forEach{v->FilterChip(category==v,{category=if(category==v)"" else v},{Text(v)})}}
                 Field(category,{category=it},"Категория")
                 Field(link,{link=it;duplicateConfirmed=false},"Ссылка на товар")
@@ -317,7 +317,10 @@ class MainActivity:ComponentActivity(){
         Text(money(o.price),style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.Bold)
         Metric(o.state.label,if(o.paid>0)"Оплачено: "+money(o.paid) else "Оплата не отмечена",Modifier.fillMaxWidth())
         if(o.state.deadlineLabel!=null)Text(o.state.deadlineLabel+": "+dateText(o.deadline))
-        if(o.point.isNotBlank())Text("Пункт выдачи: "+o.point)
+        if(o.point.isNotBlank()){
+            Text("Пункт выдачи: "+o.point)
+            OutlinedButton(onClick={openPickupMap(ctx,o.point,o.pointLat,o.pointLon)},modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Map,null);Spacer(Modifier.width(8.dp));Text("Открыть на карте")}
+        }
         if(o.category.isNotBlank())Text("Категория: "+o.category)
         if(o.note.isNotBlank())Text(o.note)
         if(o.link.startsWith("https://")||o.link.startsWith("http://"))OutlinedButton(onClick={runCatching{ctx.startActivity(Intent(Intent.ACTION_VIEW,android.net.Uri.parse(o.link)))}},modifier=Modifier.fillMaxWidth()){Text("Открыть ссылку")}
@@ -615,14 +618,18 @@ class MainActivity:ComponentActivity(){
     var kind by rememberSaveable{mutableStateOf("store")}
     var parent by rememberSaveable{mutableStateOf("")}
     var value by rememberSaveable{mutableStateOf("")}
+    var lat by rememberSaveable{mutableStateOf<Double?>(null)}
+    var lon by rememberSaveable{mutableStateOf<Double?>(null)}
     var deleting by rememberSaveable{mutableStateOf<String?>(null)}
     HorizontalDivider()
     TextButton(onClick={expanded=!expanded}){Text(if(expanded)"Скрыть справочники" else "Магазины, категории и пункты выдачи")}
     if(expanded){
-        Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(4.dp)){listOf("store" to "Магазины","category" to "Категории","point" to "ПВЗ").forEach{(k,label)->FilterChip(kind==k,{kind=k;value="";parent=""},{Text(label)})}}
-        if(kind=="point")Field(parent,{parent=it},"Магазин пункта выдачи")
-        Field(value,{value=it},"Добавить название")
-        Button(enabled=value.isNotBlank()&&value.length<=200&&(kind!="point"||parent.isNotBlank()),onClick={vm.addCatalog(kind,parent,value);value=""}){Text("Добавить")}
+        Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(4.dp)){listOf("store" to "Магазины","category" to "Категории","point" to "ПВЗ").forEach{(k,label)->FilterChip(kind==k,{kind=k;value="";parent="";lat=null;lon=null},{Text(label)})}}
+        if(kind=="point"){
+            Field(parent,{if(parent!=it){value="";lat=null;lon=null};parent=it},"Магазин пункта выдачи")
+            PickupSelector(parent,value,lat,lon,catalog){address,y,x->value=address;lat=y;lon=x}
+        }else Field(value,{value=it},"Добавить название")
+        Button(enabled=value.isNotBlank()&&value.length<=200&&(kind!="point"||parent.isNotBlank()),onClick={vm.addCatalog(kind,parent,value,lat,lon);value="";lat=null;lon=null}){Text("Добавить")}
         catalog.filter{it.kind==kind}.forEach{entry->
             Row(verticalAlignment=Alignment.CenterVertically){
                 Text((if(entry.kind=="point")entry.parent+" · " else "")+entry.value,Modifier.weight(1f))

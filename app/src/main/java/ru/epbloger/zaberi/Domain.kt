@@ -49,3 +49,5 @@ fun reminderDue(status:Status,days:Long,lead:Int,overdue:Boolean):Boolean=when(s
  Status.REFUND -> days==0L||(overdue&&days<0L&&(days== -1L||days%3L==0L))
  else -> false
 }
+
+fun validPoint(lat:Double?,lon:Double?):Boolean = if(lat==null||lon==null)lat==null&&lon==null else lat.isFinite()&&lon.isFinite()&&lat in -85.05112878..85.05112878&&lon in -180.0..180.0

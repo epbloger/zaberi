@@ -26,27 +26,34 @@ class Model(app: Application): AndroidViewModel(app) {
     private suspend fun log(id: String, label: String) = dao.history(History(uid(),id,LocalDateTime.now().toString(),label))
     private suspend fun rememberValues(o:Order){
         dao.remember(CatalogEntry(uid(),"store","",o.store))
-        if(o.point.isNotBlank())dao.remember(CatalogEntry(uid(),"point",o.store,o.point))
+        if(o.point.isNotBlank()){
+            dao.remember(CatalogEntry(uid(),"point",o.store,o.point,o.pointLat,o.pointLon))
+            if(o.pointLat!=null&&o.pointLon!=null)dao.updatePoint(o.store,o.point,o.pointLat,o.pointLon)
+        }
         if(o.category.isNotBlank())dao.remember(CatalogEntry(uid(),"category","",o.category))
     }
-    fun addCatalog(kind:String,parent:String,value:String)=change{
+    fun addCatalog(kind:String,parent:String,value:String,lat:Double?=null,lon:Double?=null)=change{
+        require(validPoint(lat,lon)&&(kind=="point"||lat==null))
         require(kind in listOf("store","point","category")&&value.isNotBlank()&&value.length<=200)
         require(kind!="point"||parent.isNotBlank())
-        dao.remember(CatalogEntry(uid(),kind,parent.trim(),value.trim()))
+        dao.remember(CatalogEntry(uid(),kind,parent.trim(),value.trim(),lat,lon))
+        if(kind=="point"&&lat!=null&&lon!=null)dao.updatePoint(parent.trim(),value.trim(),lat,lon)
     }
     fun forgetCatalog(id:String)=change{dao.forget(id)}
     fun add(order: Order) = change {
         require(order.name.isNotBlank() && order.store.isNotBlank() && order.paid>=0 && (order.price==null||order.price>=order.paid))
+        require(validPoint(order.pointLat,order.pointLon)&&(order.pointLat==null||order.point.isNotBlank()))
         dao.insert(order)
         rememberValues(order)
         if (order.paid > 0) dao.transaction(Transaction(uid(),order.id,today(),order.paid))
         log(order.id,"Добавлен: ${order.state.label}")
     }
-    fun edit(id: String, name: String, store: String, price: Long?, deadline: String?, point: String, link: String, note: String, category:String) = change {
+    fun edit(id: String, name: String, store: String, price: Long?, deadline: String?, point: String, link: String, note: String, category:String,pointLat:Double?=null,pointLon:Double?=null) = change {
+        require(validPoint(pointLat,pointLon)&&(pointLat==null||point.isNotBlank()))
         val o = dao.get(id) ?: error("Заказ не найден")
         require(name.isNotBlank() && store.isNotBlank())
         require(price == null || price >= o.paid) { "Цена не может быть меньше оплаченной суммы" }
-        val updated=o.copy(name=name,store=store,price=price,deadline=if(o.state.deadlineLabel!=null) deadline else null,point=point,link=link,note=note,category=category)
+        val updated=o.copy(name=name,store=store,price=price,deadline=if(o.state.deadlineLabel!=null) deadline else null,point=point,link=link,note=note,category=category,pointLat=pointLat,pointLon=pointLon)
         dao.update(updated);rememberValues(updated)
         log(id,"Изменены сведения")
         getApplication<Application>().getSystemService(android.app.NotificationManager::class.java).cancel(id,0)
