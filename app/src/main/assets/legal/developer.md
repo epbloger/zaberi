@@ -6,6 +6,7 @@ Moorkis Development
 Независимый разработчик приложений · Россия
 
 ## Обратная связь
+Официальный сайт: https://epbloger.github.io/zaberi/
 Проект: https://github.com/epbloger/zaberi
 Электронная почта поддержки: helpmoorkis@yandex.ru
 

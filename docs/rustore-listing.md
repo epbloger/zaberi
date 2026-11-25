@@ -4,6 +4,7 @@
 Разработчик: Moorkis Development
 Пакет: ru.epbloger.zaberi
 Поддержка: helpmoorkis@yandex.ru
+Официальный сайт: https://epbloger.github.io/zaberi/
 Бесплатно, содержит рекламу, регистрация не требуется.
 
 ## Краткое описание
@@ -29,8 +30,8 @@
 Содержимое базового приложения не обосновывает искусственное повышение возрастной категории. Учитывать фактические разрешённые рекламные тематики при определении маркировки по 436-ФЗ. Категория в карточке должна совпадать с STORE_AGE в метаданных сборки. До подтверждения категории 12+ или выше используется режим 0+ (без персонализации).
 
 ## Ссылки
-До слияния с main использовать публичные ссылки на финальные документы в release-1.0-dev:
-- https://github.com/epbloger/zaberi/blob/release-1.0-dev/app/src/main/assets/legal/privacy.md
-- https://github.com/epbloger/zaberi/blob/release-1.0-dev/app/src/main/assets/legal/terms.md
+- Официальный сайт: https://epbloger.github.io/zaberi/
+- Политика конфиденциальности: https://epbloger.github.io/zaberi/privacy.html
+- Условия использования: https://epbloger.github.io/zaberi/terms.html
 
-Сохранить ветку до перехода на постоянные публичные ссылки.
+Проверить доступность публичных страниц и совпадение документов с assets/legal текущей сборки.

@@ -15,6 +15,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 const val SUPPORT_EMAIL="helpmoorkis@yandex.ru"
+internal const val PROJECT_WEBSITE="https://epbloger.github.io/zaberi/"
+internal const val PROJECT_SOURCE="https://github.com/epbloger/zaberi/tree/release-1.0-dev"
+
+internal fun openProjectLink(context:Context,url:String){
+    require(url==PROJECT_WEBSITE||url==PROJECT_SOURCE)
+    if(runCatching{context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(url)))}.isFailure)
+        Toast.makeText(context,"Откройте в браузере: "+url,Toast.LENGTH_LONG).show()
+}
+
+@Composable internal fun ProjectLinks(){
+    val ctx=LocalContext.current
+    SettingsLink(Icons.Default.Language,"Официальный сайт","Возможности, загрузка и документы"){openProjectLink(ctx,PROJECT_WEBSITE)}
+    SettingsLink(Icons.Default.Code,"Исходный код","Репозиторий проекта на GitHub"){openProjectLink(ctx,PROJECT_SOURCE)}
+}
 fun openSupportEmail(context:Context){
     val intent=Intent(Intent.ACTION_SENDTO,Uri.parse("mailto:"+SUPPORT_EMAIL)).putExtra(Intent.EXTRA_SUBJECT,"Забери — обращение в поддержку")
     if(runCatching{context.startActivity(intent)}.isFailure)Toast.makeText(context,"Напишите нам: "+SUPPORT_EMAIL,Toast.LENGTH_LONG).show()

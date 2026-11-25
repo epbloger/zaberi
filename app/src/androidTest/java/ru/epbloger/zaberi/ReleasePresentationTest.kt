@@ -76,6 +76,14 @@ class ReleasePresentationTest {
         }
     }
 
+    @Test fun projectLinksAreVisibleAndUsePublicHttpsAddresses(){
+        assertTrue(PROJECT_WEBSITE=="https://epbloger.github.io/zaberi/")
+        assertTrue(PROJECT_SOURCE=="https://github.com/epbloger/zaberi/tree/release-1.0-dev")
+        compose.setContent{MaterialTheme{Column{ProjectLinks()}}}
+        compose.onNodeWithText("Официальный сайт").assertExists().assertHasClickAction()
+        compose.onNodeWithText("Исходный код").assertExists().assertHasClickAction()
+    }
+
     private fun contrast(a:Color,b:Color):Float{
         val x=a.luminance()
         val y=b.luminance()
@@ -87,7 +95,9 @@ class ReleasePresentationTest {
         for(name in listOf("privacy","terms","ads","developer")){
             val doc=context.assets.open("legal/$name.md").bufferedReader(Charsets.UTF_8).use{it.readText()}
             assertFalse("Internal build notes in $name",doc.contains("Тестовая сборка",ignoreCase=true)||doc.contains("debug-сборк",ignoreCase=true)||doc.contains("кандидата на релиз",ignoreCase=true))
-            assertFalse("Personal name in $name",doc.contains("Матвеев",ignoreCase=true))
+            assertFalse("Private key in $name",doc.contains("PRIVATE KEY-----"))
+            val contacts=Regex("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}").findAll(doc).map{it.value}.toSet()
+            assertTrue("Only public support contacts in $name",contacts.all{it==SUPPORT_EMAIL})
         }
         val developer=context.assets.open("legal/developer.md").bufferedReader(Charsets.UTF_8).use{it.readText()}
         assertTrue(developer.contains("Moorkis Development"))
