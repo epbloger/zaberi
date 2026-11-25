@@ -28,3 +28,9 @@ local.properties
 **/service-account*.json
 **/backups/
 **/private/
+
+*.pkcs12
+*.der
+*.bks
+*.secrets
+**/signing/
