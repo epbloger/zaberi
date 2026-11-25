@@ -142,7 +142,7 @@ class MainActivity:ComponentActivity(){
         item{Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("Активные","В пути","Можно забрать","Возвраты","История","Все").forEach{FilterChip(selected=filter==it,onClick={filter=it},label={Text(it)})}}}
         if(orders.isNotEmpty())item{OrderFilters(orders,shop,{shop=it},category,{category=it},grouped,{grouped=it})}
         if(visible.isEmpty())item{
-            EmptyOrders(orders.isEmpty(),if(orders.isEmpty())addOrder else {filter="Все";shop="";category="";query=""})
+            EmptyOrders(orders.isEmpty(),if(orders.isEmpty())addOrder else ({filter="Все";shop="";category="";query=""}))
         }else item{Text(if(filter=="Активные")"Мои заказы" else filter,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)}
         if(grouped){
             visible.groupBy{if(it.point.isBlank())"Пункт не указан" else it.store+" · "+it.point}.forEach{(title,group)->
