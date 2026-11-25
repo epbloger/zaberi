@@ -50,7 +50,7 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-@Composable internal fun Detail(o:Order,history:List<History>,vm:Model,close:()->Unit){
+@Composable internal fun Detail(o:Order,history:List<History>,vm:Model,close:()->Unit,edit:()->Unit){
     var action by rememberSaveable(o.id){mutableStateOf("")}
     var deleting by remember(o.id){mutableStateOf(false)}
     var date by rememberSaveable(o.id){mutableStateOf("")}
@@ -62,36 +62,67 @@ import java.util.Locale
         Text(o.store,color=MaterialTheme.colorScheme.primary)
         Text(money(o.price),style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.Bold)
         Metric(o.state.label,if(o.paid>0)"Оплачено: "+money(o.paid) else "Оплата не отмечена",Modifier.fillMaxWidth())
-        if(o.state.deadlineLabel!=null)Text(o.state.deadlineLabel+": "+dateText(o.deadline))
-        if(o.point.isNotBlank()){
-            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
-                Column(Modifier.weight(1f)){
-                    Text("Пункт выдачи",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(o.point,style=MaterialTheme.typography.bodyLarge)
-                }
-                IconButton(onClick={clipboard.setText(androidx.compose.ui.text.AnnotatedString(o.point))}){Icon(Icons.Default.ContentCopy,"Скопировать адрес ПВЗ")}
-            }
-            OutlinedButton(onClick={openPickupMap(ctx,o.point,o.pointLat,o.pointLon)},modifier=Modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch)){Icon(Icons.Default.Map,null);Spacer(Modifier.width(8.dp));Text("Открыть на карте")}
+        if(canMarkPayment(o.state,o.paid,o.returned,o.cancelled)){
+            OrderAction("Отметить оплату",Icons.Default.AccountBalanceWallet,ActionTone.PAYMENT,Modifier.testTag("mark_payment")){ask("pay",o.price)}
         }
-        if(o.category.isNotBlank())Text("Категория: "+o.category)
-        if(o.note.isNotBlank())Text(o.note)
-        if(o.link.startsWith("https://")||o.link.startsWith("http://"))OutlinedButton(onClick={runCatching{ctx.startActivity(Intent(Intent.ACTION_VIEW,android.net.Uri.parse(o.link)))}},modifier=Modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch)){Text("Открыть ссылку")}
         if(o.state==Status.REFUND)Metric("Осталось вернуть",money(remaining(o.expectedRefund,o.receivedRefund)),Modifier.fillMaxWidth())
-        when(o.state){
-            Status.TRANSIT->{Primary("Заказ прибыл"){ask("arrived")};OutlinedButton(onClick={ask("received")},modifier=Modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch)){Text("Уже получил")};SecondaryAction("Отменить заказ",{ask("cancel",o.paid)})}
-            Status.READY->{Primary("Забрал заказ"){ask("received")};SecondaryAction("Отменить заказ",{ask("cancel",o.paid)})}
-            Status.RECEIVED->{Primary("Оставить себе"){vm.act(o.id,"keep")};OutlinedButton(onClick={ask("return")},modifier=Modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch)){Text("Вернуть товар")};SecondaryAction("Исправить: заказ ещё не получен",{ask("undo_received")})}
-            Status.RETURN_PLANNED->{Primary("Товар возвращён"){ask("returned",o.paid)};SecondaryAction("Отказаться от возврата",{ask("cancel_return")})}
-            Status.REFUND->{Primary("Деньги поступили"){ask("refund",remaining(o.expectedRefund,o.receivedRefund))};OutlinedButton(onClick={ask("adjust_refund",o.expectedRefund)},modifier=Modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch)){Text("Уточнить сумму и срок возврата")}}
-            Status.DONE->if(!o.returned&&!o.cancelled){OutlinedButton(onClick={ask("return")},modifier=Modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch)){Text("Вернуть товар")};SecondaryAction("Вернуть в активные",{ask("reopen")})}
-            Status.CANCELLED->Unit
+        if(o.state.deadlineLabel!=null)Text(o.state.deadlineLabel+": "+dateText(o.deadline))
+        if(o.state!=Status.CANCELLED&&!(o.state==Status.DONE&&(o.returned||o.cancelled))){
+            ActionSection(if(o.state in listOf(Status.REFUND,Status.RETURN_PLANNED))"Возврат" else "Действия с заказом"){
+                when(o.state){
+                    Status.TRANSIT->{
+                        OrderAction("Заказ прибыл",Icons.Default.Inventory2,ActionTone.DELIVERY,Modifier.testTag("primary_action")){ask("arrived")}
+                        OrderAction("Уже получил заказ",Icons.Default.Check,ActionTone.DELIVERY,filled=false){ask("received")}
+                        OrderAction("Отменить заказ",Icons.Default.Cancel,ActionTone.RETURN,filled=false){ask("cancel",o.paid)}
+                    }
+                    Status.READY->{
+                        OrderAction("Забрал заказ",Icons.Default.Check,ActionTone.DELIVERY,Modifier.testTag("primary_action")){ask("received")}
+                        OrderAction("Отменить заказ",Icons.Default.Cancel,ActionTone.RETURN,filled=false){ask("cancel",o.paid)}
+                    }
+                    Status.RECEIVED->{
+                        OrderAction("Оставить себе",Icons.Default.Check,ActionTone.DELIVERY,Modifier.testTag("primary_action")){vm.act(o.id,"keep")}
+                        OrderAction("Вернуть товар",Icons.Default.AssignmentReturn,ActionTone.RETURN){ask("return")}
+                        OrderAction("Исправить: заказ ещё не получен",Icons.Default.Undo,ActionTone.NEUTRAL,filled=false){ask("undo_received")}
+                    }
+                    Status.RETURN_PLANNED->{
+                        OrderAction("Товар возвращён",Icons.Default.AssignmentReturn,ActionTone.RETURN,Modifier.testTag("primary_action")){ask("returned",o.paid)}
+                        OrderAction("Отказаться от возврата",Icons.Default.Undo,ActionTone.NEUTRAL,filled=false){ask("cancel_return")}
+                    }
+                    Status.REFUND->{
+                        OrderAction("Деньги поступили",Icons.Default.AccountBalanceWallet,ActionTone.PAYMENT,Modifier.testTag("primary_action")){ask("refund",remaining(o.expectedRefund,o.receivedRefund))}
+                        OrderAction("Уточнить сумму и срок возврата",Icons.Default.Edit,ActionTone.RETURN,filled=false){ask("adjust_refund",o.expectedRefund)}
+                    }
+                    Status.DONE->{
+                        OrderAction("Вернуть товар",Icons.Default.AssignmentReturn,ActionTone.RETURN){ask("return")}
+                        OrderAction("Вернуть в активные",Icons.Default.Undo,ActionTone.NEUTRAL,filled=false){ask("reopen")}
+                    }
+                    Status.CANCELLED->Unit
+                }
+            }
         }
-        if(canMarkPayment(o.state,o.paid,o.returned,o.cancelled))OutlinedButton(onClick={ask("pay",o.price)},modifier=Modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch)){Text("Отметить оплату")}
+        HorizontalDivider()
+        ActionSection("Сведения о заказе"){
+            OrderAction("Редактировать заказ",Icons.Default.Edit,ActionTone.NEUTRAL,Modifier.testTag("edit_order"),filled=false,click=edit)
+            if(o.point.isNotBlank()){
+                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
+                    Column(Modifier.weight(1f)){
+                        Text("Пункт выдачи",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(o.point,style=MaterialTheme.typography.bodyLarge)
+                    }
+                    IconButton(onClick={clipboard.setText(androidx.compose.ui.text.AnnotatedString(o.point))}){Icon(Icons.Default.ContentCopy,"Скопировать адрес ПВЗ")}
+                }
+                OrderAction("Открыть на карте",Icons.Default.Map,ActionTone.NEUTRAL,filled=false){openPickupMap(ctx,o.point,o.pointLat,o.pointLon)}
+            }
+            if(o.category.isNotBlank())Text("Категория: "+o.category)
+            if(o.note.isNotBlank())Text(o.note)
+            if(o.link.startsWith("https://")||o.link.startsWith("http://"))OrderAction("Открыть ссылку на товар",Icons.Default.OpenInNew,ActionTone.NEUTRAL,filled=false){runCatching{ctx.startActivity(Intent(Intent.ACTION_VIEW,android.net.Uri.parse(o.link)))}}
+        }
+        HorizontalDivider()
         key(o.id){Photos(o.id,vm)}
         HorizontalDivider()
         Text("История заказа",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
         history.forEach{Text(it.date.take(10)+" · "+it.label,style=MaterialTheme.typography.bodyMedium)}
-        SecondaryAction("Удалить заказ",{if(!deleting)ask("delete")},Modifier.testTag("delete_order"),destructive=true)
+        OrderAction("Удалить заказ",Icons.Default.DeleteOutline,ActionTone.DANGER,Modifier.testTag("delete_order"),filled=false,enabled=!deleting){ask("delete")}
     }
     if(action.isNotEmpty()){
         val a=action
@@ -101,16 +132,17 @@ import java.util.Locale
         val valid=(!needsDate||validDate(date))&&(a !in listOf("pay","refund")||validOperationDate(date,LocalDate.now()))&&(!monetary||(parsed!=null&&when(a){"refund"->parsed in 1..remaining(o.expectedRefund,o.receivedRefund);"pay"->parsed>0&&(o.price==null||parsed==o.price);"adjust_refund"->refundTargetValid(o.paid,o.receivedRefund,parsed);else->parsed in 0..o.paid}))
         AlertDialog(onDismissRequest={if(!deleting)action=""},title={Text(when(a){"arrived"->"Заказ прибыл";"return"->"Запланировать возврат";"returned"->"Товар возвращён";"cancel"->"Отменить заказ?";"refund"->"Полученные деньги";"pay"->"Оплата";"delete"->"Удалить заказ?";"adjust_refund"->"Уточнить возврат";"undo_received"->"Заказ ещё не получен";"cancel_return"->"Отказаться от возврата?";"reopen"->"Вернуть в активные?";else->"Заказ получен?"})},text={
             Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(UiSpacing.Related)){
+                if(a=="pay")Text("Отметка сохранится в учёте покупок. Деньги не списываются.")
                 if(a=="delete")Text("Заказ, фотографии, история и связанные операции будут удалены без возможности отмены. Восстановить данные можно из ранее созданной резервной копии.")
                 if(a=="adjust_refund")Text("Укажите общую сумму возврата, включая уже полученные деньги: "+money(o.receivedRefund)+". Если остаток равен нулю, возврат завершится.")
                 if(monetary)Field(amount,{amount=it},if(a=="refund")"Получено, ₽" else if(a=="pay")"Оплачено, ₽" else "Ожидается возврат, ₽",true)
                 if(needsDate)DateField(date,{date=it},when(a){"arrived","undo_received"->"Забрать до";"return"->"Вернуть до";"pay"->"Дата оплаты";"refund"->"Дата поступления";else->"Ожидается возврат"})
                 if(!monetary&&!needsDate&&a!="delete")Text("Подтвердите изменение статуса.")
             }
-        },confirmButton={Button(enabled=valid&&!deleting,colors=if(a=="delete")ButtonDefaults.buttonColors(containerColor=MaterialTheme.colorScheme.error,contentColor=MaterialTheme.colorScheme.onError) else ButtonDefaults.buttonColors(),onClick={
+        },confirmButton={Button(enabled=valid&&!deleting,colors=actionButtonColors(when(a){"delete"->ActionTone.DANGER;"pay","refund"->ActionTone.PAYMENT;"cancel","return","returned","adjust_refund"->ActionTone.RETURN;"arrived","received"->ActionTone.DELIVERY;else->ActionTone.NEUTRAL}),onClick={
             when(a){"delete"->{deleting=true;vm.remove(o.id){success->deleting=false;if(success){action="";close()}}};"refund"->vm.refund(o.id,parsed!!,date);"pay"->vm.pay(o.id,parsed!!,date);"adjust_refund"->vm.adjustRefund(o.id,parsed!!,date.trim().takeIf{it.isNotEmpty()});else->vm.act(o.id,a,date.trim().takeIf{it.isNotEmpty()},parsed)}
             if(a!="delete")action=""
-        },modifier=Modifier.testTag(if(a=="delete")"confirm_delete_order" else "confirm_order_action")){Text(if(a=="delete")"Удалить" else "Подтвердить")}},dismissButton={TextButton(enabled=!deleting,onClick={action=""}){Text("Отмена")}})
+        },modifier=Modifier.testTag(if(a=="delete")"confirm_delete_order" else "confirm_order_action")){Text(when(a){"delete"->"Удалить";"pay"->"Отметить оплату";"refund"->"Отметить поступление";"cancel"->"Отменить заказ";"return"->"Запланировать возврат";"returned"->"Подтвердить возврат";"arrived"->"Заказ прибыл";"received"->"Забрал заказ";"adjust_refund"->"Сохранить";else->"Подтвердить"})}},dismissButton={TextButton(enabled=!deleting,onClick={action=""}){Text("Отмена")}})
     }
 }
 @Composable internal fun Photos(id:String,vm:Model){

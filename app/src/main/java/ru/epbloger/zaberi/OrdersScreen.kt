@@ -81,7 +81,7 @@ import java.util.Locale
 
     }
     val pending=orders.firstOrNull{it.id==confirmId}
-    if(pending!=null)AlertDialog(onDismissRequest={confirmId=null},title={Text("Заказ получен?")},text={Text(pending.name)},confirmButton={Button(onClick={received(pending);confirmId=null}){Text("Забрал")}},dismissButton={TextButton(onClick={confirmId=null}){Text("Отмена")}})
+    if(pending!=null)AlertDialog(onDismissRequest={confirmId=null},title={Text("Заказ получен?")},text={Text(pending.name)},confirmButton={Button(colors=actionButtonColors(ActionTone.DELIVERY),onClick={received(pending);confirmId=null}){Text("Забрал")}},dismissButton={TextButton(onClick={confirmId=null}){Text("Отмена")}})
 }
 @Composable internal fun OrderCard(o:Order,quick:(()->Unit)?=null,open:()->Unit){
     val date=o.deadline?.let{LocalDate.parse(it)}
@@ -109,7 +109,7 @@ import java.util.Locale
                 Icon(Icons.Default.Schedule,null,Modifier.size(16.dp),tint=statusColor)
                 Text(when{overdue->"Срок истёк · "+dateText(o.deadline);days==0L->(o.state.deadlineLabel?:"Срок")+": сегодня";days==1L->(o.state.deadlineLabel?:"Срок")+": завтра";else->(o.state.deadlineLabel?:"Срок")+": "+dateText(o.deadline)},color=statusColor,style=MaterialTheme.typography.bodySmall)
             }
-            if(quick!=null)FilledTonalButton(onClick=quick,modifier=Modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch)){Icon(Icons.Default.Check,null,Modifier.size(18.dp));Spacer(Modifier.width(8.dp));Text("Забрал заказ")}
+            if(quick!=null)OrderAction("Забрал заказ",Icons.Default.Check,ActionTone.DELIVERY,click=quick)
         }
     }
 }
@@ -150,7 +150,7 @@ import java.util.Locale
         Surface(shape=RoundedCornerShape(UiSpacing.CardRadius),color=MaterialTheme.colorScheme.primaryContainer){Icon(Icons.Default.Inventory2,null,Modifier.padding(22.dp).size(38.dp),tint=MaterialTheme.colorScheme.onPrimaryContainer)}
         Text(if(first)"Добавьте первый заказ" else "Ничего не найдено",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
         Text(if(first)"Выберите магазин и укажите срок. Забери напомнит, когда пора за покупкой." else "Попробуйте сбросить фильтры.",style=MaterialTheme.typography.bodyMedium,textAlign=androidx.compose.ui.text.style.TextAlign.Center,color=MaterialTheme.colorScheme.onSurfaceVariant)
-        if(first)Button(onClick=action,modifier=Modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch)){Text("Добавить заказ")}else SecondaryAction("Сбросить фильтры",action)
+        if(first)OrderAction("Добавить заказ",Icons.Default.Add,ActionTone.DELIVERY,click=action)else SecondaryAction("Сбросить фильтры",action)
     }
 }
 @Composable internal fun OrderFilters(orders:List<Order>,shop:String,setShop:(String)->Unit,category:String,setCategory:(String)->Unit,grouped:Boolean,setGrouped:(Boolean)->Unit){

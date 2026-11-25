@@ -143,9 +143,9 @@ import java.util.Locale
     HorizontalDivider()
     Text("Резервное копирование",style=MaterialTheme.typography.titleLarge)
     Text("Копия заказов, операций, истории, справочников и фото защищена паролем. Восстановление заменяет текущие заказы. Пароль восстановить нельзя.")
-    OutlinedButton(enabled=!busy,onClick={action="export";password="";confirm=""},modifier=Modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch)){Text("Создать защищённую копию")}
-    OutlinedButton(enabled=!busy,onClick={action="restore";password="";confirm=""},modifier=Modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch)){Text("Восстановить из копии")}
-    OutlinedButton(enabled=!busy,onClick={action="csv"},modifier=Modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch)){Text("Экспорт операций CSV")}
+    OrderAction("Создать защищённую копию",Icons.Default.Backup,ActionTone.DELIVERY,enabled=!busy){action="export";password="";confirm=""}
+    OrderAction("Восстановить из копии",Icons.Default.Restore,ActionTone.RETURN,filled=false,enabled=!busy){action="restore";password="";confirm=""}
+    OrderAction("Экспорт операций CSV",Icons.Default.FileDownload,ActionTone.NEUTRAL,filled=false,enabled=!busy){action="csv"}
     if(busy)LinearProgressIndicator(Modifier.fillMaxWidth())
     if(message.isNotBlank())Text(message)
     if(action.isNotEmpty()){
@@ -159,10 +159,10 @@ import java.util.Locale
                     if(kind=="export")OutlinedTextField(confirm,{confirm=it},label={Text("Повторите пароль")},visualTransformation=PasswordVisualTransformation(),singleLine=true)
                 }
             }
-        },confirmButton={Button(enabled=kind=="csv"||(password.length>=8&&(kind!="export"||password==confirm)),onClick={
+        },confirmButton={Button(colors=actionButtonColors(if(kind=="restore")ActionTone.RETURN else ActionTone.DELIVERY),enabled=kind=="csv"||(password.length>=8&&(kind!="export"||password==confirm)),onClick={
             action=""
             when(kind){"export"->export.launch("zaberi-"+today()+".zaberi");"restore"->restore.launch(arrayOf("application/octet-stream","*/*"));else->csv.launch("zaberi-"+today()+".csv")}
-        }){Text("Продолжить")}},dismissButton={TextButton(onClick={action="";password="";confirm=""}){Text("Отмена")}})
+        }){Text(when(kind){"export"->"Создать копию";"restore"->"Выбрать копию";else->"Сохранить CSV"})}},dismissButton={TextButton(onClick={action="";password="";confirm=""}){Text("Отмена")}})
     }
 }
 
@@ -198,8 +198,8 @@ import java.util.Locale
     HorizontalDivider()
     Text("Удаление данных",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
     Text("Можно очистить все заказы, фото, историю, финансовые операции и сохранённые справочники. Ранее экспортированные файлы останутся в выбранных местах.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-    OutlinedButton(onClick={confirm=true},modifier=Modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch)){Icon(Icons.Default.Delete,null,tint=MaterialTheme.colorScheme.error);Spacer(Modifier.width(8.dp));Text("Удалить все данные заказов",color=MaterialTheme.colorScheme.error)}
-    if(confirm)AlertDialog(onDismissRequest={confirm=false},title={Text("Удалить все заказы?")},text={Text("Это действие нельзя отменить без резервной копии. Настройки оформления и уведомлений сохранятся.")},confirmButton={TextButton(onClick={vm.clearData();confirm=false}){Text("Удалить всё",color=MaterialTheme.colorScheme.error)}},dismissButton={TextButton(onClick={confirm=false}){Text("Отмена")}})
+    OrderAction("Удалить все данные заказов",Icons.Default.DeleteOutline,ActionTone.DANGER,filled=false){confirm=true}
+    if(confirm)AlertDialog(onDismissRequest={confirm=false},title={Text("Удалить все заказы?")},text={Text("Это действие нельзя отменить без резервной копии. Настройки оформления и уведомлений сохранятся.")},confirmButton={Button(colors=actionButtonColors(ActionTone.DANGER),onClick={vm.clearData();confirm=false}){Text("Удалить всё")}},dismissButton={TextButton(onClick={confirm=false}){Text("Отмена")}})
 }
 
 @Composable internal fun MapCacheSettings(){

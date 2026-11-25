@@ -113,6 +113,14 @@ class AdaptiveLayoutTest {
         assertTrue("Order must actually be committed to Room before leaving the form",persisted)
         compose.onNodeWithTag("orders_list").performScrollToNode(hasText(name))
         compose.onNodeWithText(name).assertIsDisplayed().performTouchInput{click()}
+        val payment=compose.onNodeWithTag("mark_payment").performScrollTo().assertIsDisplayed()
+        assertInsideWindow("mark_payment")
+        val paymentY=payment.fetchSemanticsNode().positionInRoot.y
+        val primaryBefore=compose.onNodeWithTag("primary_action").fetchSemanticsNode().positionInRoot.y
+        assertTrue("Payment must appear before delivery actions",paymentY<primaryBefore)
+        payment.performClick()
+        compose.onNodeWithText("Оплата",substring=false).assertIsDisplayed()
+        compose.onNodeWithText("Отмена").performClick()
         val primary=compose.onNodeWithTag("primary_action").performScrollTo().assertIsDisplayed().fetchSemanticsNode()
         val delete=compose.onNodeWithTag("delete_order").performScrollTo()
         assertInsideWindow("delete_order")

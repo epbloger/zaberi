@@ -114,16 +114,16 @@ jobs:
             exit 1
           fi
           mkdir -p distribution
-          cp "$SRC" distribution/zaberi-1.0.0-unsigned.apk
+          cp "$SRC" distribution/zaberi-1.0.1-unsigned.apk
           "$SDK/aapt" dump badging "$SRC" > distribution/apk-info.txt
-          grep -F "package: name='ru.epbloger.zaberi' versionCode='108' versionName='1.0.0'" distribution/apk-info.txt
+          grep -F "package: name='ru.epbloger.zaberi' versionCode='109' versionName='1.0.1'" distribution/apk-info.txt
           printf '%s\n' "$GITHUB_SHA" > distribution/commit.txt
-          (cd distribution && sha256sum zaberi-1.0.0-unsigned.apk > SHA256SUMS.txt)
+          (cd distribution && sha256sum zaberi-1.0.1-unsigned.apk > SHA256SUMS.txt)
       - name: Upload unsigned distribution APK
         if: ${{ github.event_name == 'pull_request' && github.head_ref == 'release-1.0-dev' && github.event.pull_request.head.repo.full_name == github.repository }}
         uses: actions/upload-artifact@v4
         with:
-          name: zaberi-1.0.0-unsigned
+          name: zaberi-1.0.1-unsigned
           path: distribution/
           if-no-files-found: error
           retention-days: 14

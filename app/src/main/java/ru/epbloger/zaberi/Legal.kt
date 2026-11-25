@@ -24,7 +24,7 @@ fun openSupportEmail(context:Context){
     Text("Документы доступны без интернета.",color=MaterialTheme.colorScheme.onSurfaceVariant)
     SettingsLink(Icons.Default.Shield,"Конфиденциальность","Какие данные используются и где хранятся"){open("Конфиденциальность")}
     SettingsLink(Icons.Default.Description,"Условия использования","Назначение приложения и правила"){open("Условия использования")}
-    SettingsLink(Icons.Default.Campaign,"Реклама и сторонние сервисы","Информация о текущей версии"){open("Реклама и сторонние сервисы")}
+    SettingsLink(Icons.Default.Campaign,"Реклама и сторонние сервисы","Баннеры, данные и внешние сервисы"){open("Реклама и сторонние сервисы")}
     SettingsLink(Icons.Default.ContactSupport,"Разработчик и контакты","Обратная связь и сведения о распространителе"){open("Разработчик и контакты")}
 }
 @Composable fun LegalDocument(page:String){

@@ -74,7 +74,7 @@ import java.util.Locale
     val focus=LocalFocusManager.current
     val keyboard=LocalSoftwareKeyboardController.current
     AdaptiveActionScreen(title=if(old==null)"Новый заказ" else "Редактировать",close=close,action={
-        Button(enabled=valid&&!saving,onClick={
+        Button(colors=actionButtonColors(ActionTone.DELIVERY),enabled=valid&&!saving,onClick={
                 val d=if(state.deadlineLabel!=null)deadline.trim().takeIf{it.isNotEmpty()}else null
                 val o=old?.copy(name=name.trim(),store=store.trim(),price=parsed,deadline=d,point=point.trim(),link=link.trim(),note=note.trim(),category=category.trim(),pointLat=pointLat,pointLon=pointLon)?:Order(draftId,name.trim(),store.trim(),parsed,if(paid)parsed?:0 else 0,status,d,point.trim(),link.trim(),note.trim(),draftCreated,category=category.trim(),pointLat=pointLat,pointLon=pointLon)
                 focus.clearFocus();keyboard?.hide();save(o)

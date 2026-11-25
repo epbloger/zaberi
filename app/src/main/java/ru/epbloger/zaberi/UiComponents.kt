@@ -37,6 +37,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -109,5 +110,41 @@ internal fun validDate(s:String)=s.isBlank()||runCatching{LocalDate.parse(s)}.is
                 second(Modifier.weight(1f).fillMaxHeight())
             }
         }
+    }
+}
+
+internal enum class ActionTone { PAYMENT, DELIVERY, RETURN, NEUTRAL, DANGER }
+
+@Composable internal fun actionColor(tone:ActionTone,filled:Boolean=true):Color {
+    val dark=MaterialTheme.colorScheme.surface.luminance()<0.5f
+    return when(tone){
+        ActionTone.PAYMENT->if(!filled&&dark)Color(0xFF92D5B4) else Color(0xFF16634B)
+        ActionTone.DELIVERY->if(!filled&&dark)Color(0xFFA9C7FF) else Color(0xFF285BB0)
+        ActionTone.RETURN->if(!filled&&dark)Color(0xFFFFCF88) else Color(0xFF87500A)
+        ActionTone.NEUTRAL->MaterialTheme.colorScheme.onSurfaceVariant
+        ActionTone.DANGER->if(filled)Color(0xFFB3261E) else MaterialTheme.colorScheme.error
+    }
+}
+
+@Composable internal fun actionButtonColors(tone:ActionTone):ButtonColors =
+    if(tone==ActionTone.NEUTRAL)ButtonDefaults.buttonColors()
+    else ButtonDefaults.buttonColors(containerColor=actionColor(tone),contentColor=Color.White)
+
+/** A verb, a recognizable icon, and a semantic color; never color alone. */
+@Composable internal fun OrderAction(label:String,icon:ImageVector,tone:ActionTone,modifier:Modifier=Modifier,filled:Boolean=true,enabled:Boolean=true,click:()->Unit){
+    val layout=modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch)
+    val content:@Composable RowScope.()->Unit={
+        Icon(icon,null,Modifier.size(20.dp))
+        Spacer(Modifier.width(UiSpacing.Related))
+        Text(label,textAlign=androidx.compose.ui.text.style.TextAlign.Center)
+    }
+    if(filled)Button(onClick=click,enabled=enabled,modifier=layout,colors=actionButtonColors(tone),content=content)
+    else OutlinedButton(onClick=click,enabled=enabled,modifier=layout,colors=ButtonDefaults.outlinedButtonColors(contentColor=actionColor(tone,false)),border=BorderStroke(1.dp,actionColor(tone,false)),content=content)
+}
+
+@Composable internal fun ActionSection(title:String,content:@Composable ColumnScope.()->Unit){
+    Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(UiSpacing.Block)){
+        Text(title,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+        content()
     }
 }

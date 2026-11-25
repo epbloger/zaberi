@@ -151,7 +151,7 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
     }
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(UiSpacing.Block)){
         OutlinedButton(onClick={draft=address;manual=true},modifier=Modifier.weight(1f).heightIn(min=UiSpacing.Touch)){Text("Вручную")}
-        Button(onClick={showMap()},modifier=Modifier.weight(1f).heightIn(min=UiSpacing.Touch).testTag("open_pickup_map")){Icon(Icons.Default.Map,null,Modifier.size(18.dp));Spacer(Modifier.width(UiSpacing.Tight));Text("На карте")}
+        Button(colors=actionButtonColors(ActionTone.DELIVERY),onClick={showMap()},modifier=Modifier.weight(1f).heightIn(min=UiSpacing.Touch).testTag("open_pickup_map")){Icon(Icons.Default.Map,null,Modifier.size(18.dp));Spacer(Modifier.width(UiSpacing.Tight));Text("На карте")}
     }
     if(saved.isNotEmpty())TextButton(onClick={query="";chooser=true}){Text("Сохранённые ПВЗ ("+saved.size+")")}
     if(chooser)AlertDialog(onDismissRequest={chooser=false},title={Text("Выбрать ПВЗ")},text={
@@ -248,7 +248,7 @@ fun openPickupMap(context:Context,address:String,lat:Double?,lon:Double?){
         }
     }
     AdaptiveActionScreen(title="Выбрать точку",close=leaveMap,action={
-        Button(enabled=zoom>=14&&images.containsKey(center)&&!resolving&&!locating&&!searching,onClick={
+        Button(colors=actionButtonColors(ActionTone.DELIVERY),enabled=zoom>=14&&images.containsKey(center)&&!resolving&&!locating&&!searching,onClick={
             focus.clearFocus();keyboard?.hide()
             val chosenX=x;val chosenY=y
             val selectedLat=yToLat(chosenY);val selectedLon=xToLon(chosenX)

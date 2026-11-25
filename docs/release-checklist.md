@@ -1,18 +1,19 @@
-# ЗАБЕРИ. — выпуск 1.0.0
+# ЗАБЕРИ. — выпуск 1.0.1
 
 ## Проверка кандидата
+- 1.0.0 (#26) подписан локально и установлен пользователем; 1.0.1 улучшает доступность действий и тексты. Подписывать прежним ключом, устанавливать поверх подписанной версии без удаления.
 - RC8, GitHub Actions #25: все проверки успешны, интерфейс проверен пользователем на телефоне.
 - Финальный коммит: повторить unit-тесты, lint debug/release, инструментальные тесты Android 9/15 и адаптивность.
-- Скачать исключительно артефакт zaberi-1.0.0-unsigned успешной сборки из собственной ветки release-1.0-dev. Сверить commit.txt, apk-info.txt и SHA256SUMS.txt.
+- Скачать исключительно артефакт zaberi-1.0.1-unsigned успешной сборки из собственной ветки release-1.0-dev. Сверить commit.txt, apk-info.txt и SHA256SUMS.txt.
 - Реальный рекламный блок R-M-20506199-1 используется только в кандидате для публикации; debug сохраняет демонстрационный блок.
 
 ## Подпись только локально
 - Постоянный ключ D:\ZABERI-KEYS\zaberi-final.jks (alias zaberi); хранить резервную копию отдельно. Никогда не передавать ключ и пароли в GitHub, чат, сторонние сервисы.
 - Build Tools 35.0.0 установлены на D:\AndroidSDK.
-- Распаковать unsigned APK на D:\ZABERI-RELEASE. Проверить SHA-256 командой certutil -hashfile zaberi-1.0.0-unsigned.apk SHA256.
-- Проверить выравнивание командой zipalign -c -P 16 4 zaberi-1.0.0-unsigned.apk. При ошибке не подписывать до выяснения причины.
-- Подписать через apksigner sign --ks "D:\ZABERI-KEYS\zaberi-final.jks" --ks-key-alias zaberi --out zaberi-1.0.0.apk zaberi-1.0.0-unsigned.apk. Пароли вводятся интерактивно.
-- Проверить apksigner verify --verbose --print-certs zaberi-1.0.0.apk и соответствие SHA-256 сертификата выводу keytool -list -v -keystore "D:\ZABERI-KEYS\zaberi-final.jks" -alias zaberi.
+- Распаковать unsigned APK на D:\ZABERI-RELEASE. Проверить SHA-256 командой certutil -hashfile zaberi-1.0.1-unsigned.apk SHA256.
+- Проверить выравнивание командой zipalign -c -P 16 4 zaberi-1.0.1-unsigned.apk. При ошибке не подписывать до выяснения причины.
+- Подписать через apksigner sign --ks "D:\ZABERI-KEYS\zaberi-final.jks" --ks-key-alias zaberi --out zaberi-1.0.1.apk zaberi-1.0.1-unsigned.apk. Пароли вводятся интерактивно.
+- Проверить apksigner verify --verbose --print-certs zaberi-1.0.1.apk и соответствие SHA-256 сертификата выводу keytool -list -v -keystore "D:\ZABERI-KEYS\zaberi-final.jks" -alias zaberi.
 - Сделать резервную копию заказов перед удалением debug-версии: подписи различаются. Установить подписанный APK, восстановить данные и проверить основные функции, уведомления, карту, камеру, рекламу и отказ от персонализации. Не нажимать на собственную рекламу.
 
 ## До публикации
