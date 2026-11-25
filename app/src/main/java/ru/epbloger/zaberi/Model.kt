@@ -53,7 +53,7 @@ class Model(app: Application): AndroidViewModel(app) {
     }
     fun act(id: String, event: String, deadline: String? = null, amount: Long? = null) = change {
         val o = dao.get(id) ?: error("Заказ не найден")
-        require(event != "return" || !o.returned && !o.cancelled) { "Возврат уже завершён" }
+        require(event !in listOf("return","reopen") || !o.returned && !o.cancelled) { "Возврат уже завершён" }
         val state = nextStatus(o.state,event,o.paid)
         val expected = if(state == Status.REFUND) (amount ?: o.paid) else 0L
         require(expected in 0..o.paid) { "Сумма возврата превышает оплату" }
@@ -62,21 +62,32 @@ class Model(app: Application): AndroidViewModel(app) {
         log(id,actualState.label)
         getApplication<Application>().getSystemService(android.app.NotificationManager::class.java).cancel(id.hashCode())
     }
-    fun pay(id: String, amount: Long) = change {
+    fun pay(id: String, amount: Long, operationDate:String=today()) = change {
         val o = dao.get(id) ?: error("Заказ не найден")
-        require(o.state in listOf(Status.TRANSIT,Status.READY,Status.RECEIVED) && o.paid==0L && amount>0) { "Оплата недоступна" }
+        require(canMarkPayment(o.state,o.paid,o.returned,o.cancelled)&&amount>0) { "Оплата недоступна" }
+        require(validOperationDate(operationDate,LocalDate.now())) { "Проверьте дату оплаты" }
         require(o.price==null || amount==o.price) { "Укажите полную стоимость заказа" }
         dao.update(o.copy(paid=amount,price=o.price?:amount))
-        dao.transaction(Transaction(uid(),id,today(),amount)); log(id,"Оплачен")
+        dao.transaction(Transaction(uid(),id,operationDate,amount)); log(id,"Оплачен: "+operationDate)
     }
-    fun refund(id: String, amount: Long) = change {
+    fun refund(id: String, amount: Long, operationDate:String=today()) = change {
         val o = dao.get(id) ?: error("Заказ не найден")
         require(o.state==Status.REFUND && amount>0 && amount<=remaining(o.expectedRefund,o.receivedRefund)) { "Проверьте сумму возврата" }
+        require(validOperationDate(operationDate,LocalDate.now())) { "Проверьте дату возврата" }
         val received=o.receivedRefund+amount
         val state=if(received==o.expectedRefund) (if(o.cancelled) Status.CANCELLED else Status.DONE) else Status.REFUND
         dao.update(o.copy(receivedRefund=received,status=state.name,deadline=if(state==Status.REFUND) o.deadline else null))
-        dao.transaction(Transaction(uid(),id,today(),-amount)); log(id,if(state==Status.REFUND) "Частичный возврат" else "Возврат завершён")
+        dao.transaction(Transaction(uid(),id,operationDate,-amount)); log(id,if(state==Status.REFUND) "Частичный возврат" else "Возврат завершён")
         if(state!=Status.REFUND)getApplication<Application>().getSystemService(android.app.NotificationManager::class.java).cancel(id.hashCode())
+    }
+    fun adjustRefund(id:String,target:Long,deadline:String?)=change{
+        val o=dao.get(id)?:error("Заказ не найден")
+        require(o.state==Status.REFUND&&refundTargetValid(o.paid,o.receivedRefund,target)){"Укажите сумму не меньше полученной и не больше оплаты"}
+        deadline?.let{LocalDate.parse(it)}
+        val state=if(target==o.receivedRefund){if(o.cancelled)Status.CANCELLED else Status.DONE}else Status.REFUND
+        dao.update(o.copy(expectedRefund=target,status=state.name,deadline=if(state==Status.REFUND)deadline else null))
+        log(id,"Уточнена сумма ожидаемого возврата")
+        getApplication<Application>().getSystemService(android.app.NotificationManager::class.java).cancel(id.hashCode())
     }
     fun photos(id:String)=dao.photos(id)
     fun addPhoto(id:String,uri:android.net.Uri)=viewModelScope.launch{

@@ -82,6 +82,9 @@ class MainActivity:ComponentActivity(){
     var editing by rememberSaveable{mutableStateOf(false)}
     var imported by rememberSaveable{mutableStateOf("")}
     val snack=remember{SnackbarHostState()}
+    val ctx=LocalContext.current
+    val notificationPermission=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()){granted->if(granted)Reminders.enqueue(ctx)}
+    var notificationPrompt by rememberSaveable{mutableStateOf(false)}
     LaunchedEffect(Unit){vm.errors.collect{snack.showSnackbar(it)}}
     LaunchedEffect(shared){if(shared!=null){imported=shared;add=true;consume()}}
     LaunchedEffect(openId,orders){if(openId!=null&&orders.any{it.id==openId}){selected=openId;consumeId()}}
@@ -99,7 +102,8 @@ class MainActivity:ComponentActivity(){
             when{order!=null->Detail(order,history.filter{it.orderId==order.id},vm,{selected=null});tab==0->Orders(orders,{selected=it.id},{vm.act(it.id,"received")});tab==1->CalendarPage(orders,{selected=it.id});tab==2->Stats(orders,tx);else->SettingsPage(preferences,catalog,vm)}
         }
     }
-    if(add)OrderForm(null,imported,catalog,orders,{add=false}){o->vm.add(o);add=false;tab=0}
+    if(add)OrderForm(null,imported,catalog,orders,{add=false}){o->vm.add(o);add=false;tab=0;if(o.deadline!=null&&preferences.enabled&&Build.VERSION.SDK_INT>=33&&ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)notificationPrompt=true}
+    if(notificationPrompt)AlertDialog(onDismissRequest={notificationPrompt=false},title={Text("Напомнить о сроке?")},text={Text("Разрешите уведомления, чтобы Забери мог напомнить о получении или возврате. Это можно изменить в настройках.")},confirmButton={Button(onClick={notificationPrompt=false;if(Build.VERSION.SDK_INT>=33)notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)}){Text("Разрешить")}},dismissButton={TextButton(onClick={notificationPrompt=false}){Text("Не сейчас")}})
     if(editing&&order!=null)OrderForm(order,"",catalog,orders,{editing=false}){o->vm.edit(o.id,o.name,o.store,o.price,o.deadline,o.point,o.link,o.note,o.category);editing=false}
 }
 
@@ -215,7 +219,7 @@ class MainActivity:ComponentActivity(){
     var date by rememberSaveable(o.id){mutableStateOf("")}
     var amount by rememberSaveable(o.id){mutableStateOf("")}
     val ctx=LocalContext.current
-    fun ask(event:String,initial:Long?=null){action=event;date="";amount=number(initial)}
+    fun ask(event:String,initial:Long?=null){action=event;date=when(event){"pay","refund"->today();"adjust_refund"->o.deadline.orEmpty();else->""};amount=number(initial)}
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
         Text(o.store,color=MaterialTheme.colorScheme.primary)
         Text(money(o.price),style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.Bold)
@@ -229,13 +233,13 @@ class MainActivity:ComponentActivity(){
         when(o.state){
             Status.TRANSIT->{Primary("Заказ прибыл"){ask("arrived")};OutlinedButton(onClick={ask("received")}){Text("Уже получил")};TextButton(onClick={ask("cancel",o.paid)}){Text("Отменить заказ")}}
             Status.READY->{Primary("Забрал заказ"){ask("received")};TextButton(onClick={ask("cancel",o.paid)}){Text("Отменить заказ")}}
-            Status.RECEIVED->{Primary("Оставить себе"){vm.act(o.id,"keep")};OutlinedButton(onClick={ask("return")}){Text("Вернуть товар")}}
-            Status.RETURN_PLANNED->Primary("Товар возвращён"){ask("returned",o.paid)}
-            Status.REFUND->Primary("Деньги поступили"){ask("refund",remaining(o.expectedRefund,o.receivedRefund))}
-            Status.DONE->if(!o.returned&&!o.cancelled)OutlinedButton(onClick={ask("return")}){Text("Вернуть товар")}
+            Status.RECEIVED->{Primary("Оставить себе"){vm.act(o.id,"keep")};OutlinedButton(onClick={ask("return")}){Text("Вернуть товар")};TextButton(onClick={ask("undo_received")}){Text("Исправить: заказ ещё не получен")}}
+            Status.RETURN_PLANNED->{Primary("Товар возвращён"){ask("returned",o.paid)};TextButton(onClick={ask("cancel_return")}){Text("Отказаться от возврата")}}
+            Status.REFUND->{Primary("Деньги поступили"){ask("refund",remaining(o.expectedRefund,o.receivedRefund))};OutlinedButton(onClick={ask("adjust_refund",o.expectedRefund)}){Text("Уточнить сумму и срок возврата")}}
+            Status.DONE->if(!o.returned&&!o.cancelled){OutlinedButton(onClick={ask("return")}){Text("Вернуть товар")};TextButton(onClick={ask("reopen")}){Text("Вернуть в активные")}}
             Status.CANCELLED->Unit
         }
-        if(o.paid==0L&&o.state in listOf(Status.TRANSIT,Status.READY,Status.RECEIVED))OutlinedButton(onClick={ask("pay",o.price)}){Text("Отметить оплату")}
+        if(canMarkPayment(o.state,o.paid,o.returned,o.cancelled))OutlinedButton(onClick={ask("pay",o.price)}){Text("Отметить оплату")}
         Photos(o.id,vm)
         HorizontalDivider()
         Text("История заказа",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
@@ -244,19 +248,20 @@ class MainActivity:ComponentActivity(){
     }
     if(action.isNotEmpty()){
         val a=action
-        val monetary=a in listOf("refund","pay")||(a in listOf("cancel","returned")&&o.paid>0)
-        val needsDate=a in listOf("arrived","return")||(a in listOf("returned","cancel")&&o.paid>0)
+        val monetary=a in listOf("refund","pay","adjust_refund")||(a in listOf("cancel","returned")&&o.paid>0)
+        val needsDate=a in listOf("arrived","return","undo_received","adjust_refund","pay","refund")||(a in listOf("returned","cancel")&&o.paid>0)
         val parsed=parseMoney(amount)
-        val valid=(!needsDate||validDate(date))&&(!monetary||(parsed!=null&&when(a){"refund"->parsed in 1..remaining(o.expectedRefund,o.receivedRefund);"pay"->parsed>0&&(o.price==null||parsed==o.price);else->parsed in 0..o.paid}))
-        AlertDialog(onDismissRequest={action=""},title={Text(when(a){"arrived"->"Заказ прибыл";"return"->"Запланировать возврат";"returned"->"Товар возвращён";"cancel"->"Отменить заказ?";"refund"->"Полученные деньги";"pay"->"Оплата";"delete"->"Удалить заказ?";else->"Заказ получен?"})},text={
+        val valid=(!needsDate||validDate(date))&&(a !in listOf("pay","refund")||validOperationDate(date,LocalDate.now()))&&(!monetary||(parsed!=null&&when(a){"refund"->parsed in 1..remaining(o.expectedRefund,o.receivedRefund);"pay"->parsed>0&&(o.price==null||parsed==o.price);"adjust_refund"->refundTargetValid(o.paid,o.receivedRefund,parsed);else->parsed in 0..o.paid}))
+        AlertDialog(onDismissRequest={action=""},title={Text(when(a){"arrived"->"Заказ прибыл";"return"->"Запланировать возврат";"returned"->"Товар возвращён";"cancel"->"Отменить заказ?";"refund"->"Полученные деньги";"pay"->"Оплата";"delete"->"Удалить заказ?";"adjust_refund"->"Уточнить возврат";"undo_received"->"Заказ ещё не получен";"cancel_return"->"Отказаться от возврата?";"reopen"->"Вернуть в активные?";else->"Заказ получен?"})},text={
             Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
                 if(a=="delete")Text("Заказ и связанные операции будут удалены из истории и статистики.")
+                if(a=="adjust_refund")Text("Укажите общую сумму возврата, включая уже полученные деньги: "+money(o.receivedRefund)+". Если остаток равен нулю, возврат завершится.")
                 if(monetary)Field(amount,{amount=it},if(a=="refund")"Получено, ₽" else if(a=="pay")"Оплачено, ₽" else "Ожидается возврат, ₽",true)
-                if(needsDate)DateField(date,{date=it},when(a){"arrived"->"Забрать до";"return"->"Вернуть до";else->"Ожидается возврат"})
+                if(needsDate)DateField(date,{date=it},when(a){"arrived","undo_received"->"Забрать до";"return"->"Вернуть до";"pay"->"Дата оплаты";"refund"->"Дата поступления";else->"Ожидается возврат"})
                 if(!monetary&&!needsDate&&a!="delete")Text("Подтвердите изменение статуса.")
             }
         },confirmButton={Button(enabled=valid,onClick={
-            when(a){"delete"->{vm.remove(o.id);close()};"refund"->vm.refund(o.id,parsed!!);"pay"->vm.pay(o.id,parsed!!);else->vm.act(o.id,a,date.trim().takeIf{it.isNotEmpty()},parsed)}
+            when(a){"delete"->{vm.remove(o.id);close()};"refund"->vm.refund(o.id,parsed!!,date);"pay"->vm.pay(o.id,parsed!!,date);"adjust_refund"->vm.adjustRefund(o.id,parsed!!,date.trim().takeIf{it.isNotEmpty()});else->vm.act(o.id,a,date.trim().takeIf{it.isNotEmpty()},parsed)}
             action=""
         }){Text("Подтвердить")}},dismissButton={TextButton(onClick={action=""}){Text("Отмена")}})
     }
@@ -332,7 +337,7 @@ class MainActivity:ComponentActivity(){
         }
         HorizontalDivider()
         Text("О приложении",style=MaterialTheme.typography.titleLarge)
-        Text("Забери 0.3.0 · тестовая версия")
+        Text("Забери 0.4.0 · тестовая версия")
         Text("Заказы хранятся на устройстве. Интернет и учётная запись не требуются. Реклама в этой версии не подключена.")
         CatalogSettings(catalog,vm)
         BackupPanel()

@@ -17,6 +17,9 @@ fun nextStatus(current: Status, event: String, paid: Long = 0L): Status = when (
     "arrived" -> { require(current == Status.TRANSIT); Status.READY }
     "received" -> { require(current == Status.READY || current == Status.TRANSIT); Status.RECEIVED }
     "keep" -> { require(current == Status.RECEIVED); Status.DONE }
+    "undo_received" -> { require(current == Status.RECEIVED); Status.READY }
+    "cancel_return" -> { require(current == Status.RETURN_PLANNED); Status.RECEIVED }
+    "reopen" -> { require(current == Status.DONE); Status.RECEIVED }
     "return" -> { require(current == Status.RECEIVED || current == Status.DONE); Status.RETURN_PLANNED }
     "returned" -> { require(current == Status.RETURN_PLANNED); if (paid > 0) Status.REFUND else Status.DONE }
     "cancel" -> { require(current == Status.TRANSIT || current == Status.READY); if (paid > 0) Status.REFUND else Status.CANCELLED }
@@ -28,3 +31,6 @@ fun detectStore(text: String): String? {
     fun matches(domain: String) = host == domain || host.endsWith(".$domain")
     return when { matches("ozon.ru") || matches("ozon.com") -> "Ozon"; matches("wildberries.ru") || matches("wb.ru") -> "Wildberries"; matches("market.yandex.ru") -> "Яндекс Маркет"; matches("avito.ru") -> "Авито"; matches("megamarket.ru") -> "Мегамаркет"; matches("aliexpress.ru") -> "AliExpress"; matches("lamoda.ru") -> "Lamoda"; else -> null }
 }
+fun refundTargetValid(paid:Long,received:Long,target:Long):Boolean = paid>=0 && received in 0..paid && target in received..paid
+fun validOperationDate(value:String,today:LocalDate):Boolean = runCatching { val date=LocalDate.parse(value); !date.isAfter(today) }.getOrDefault(false)
+fun canMarkPayment(status:Status,paid:Long,returned:Boolean,cancelled:Boolean):Boolean = paid==0L&&!returned&&!cancelled&&status in listOf(Status.TRANSIT,Status.READY,Status.RECEIVED,Status.DONE,Status.RETURN_PLANNED)
