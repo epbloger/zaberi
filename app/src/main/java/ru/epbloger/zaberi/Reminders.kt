@@ -14,7 +14,10 @@ class Reminders(context: Context, params: WorkerParameters): CoroutineWorker(con
     override suspend fun doWork(): Result {
         val c=applicationContext
         if (Build.VERSION.SDK_INT>=33 && c.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) return Result.success()
-        if (LocalTime.now().hour !in 9..21) return Result.success()
+        val settings=c.getSharedPreferences("preferences",Context.MODE_PRIVATE)
+        if(!settings.getBoolean("enabled",true))return Result.success()
+        if(LocalTime.now().hour !in settings.getInt("hour",9).coerceIn(7,21)..21)return Result.success()
+        val details=settings.getBoolean("details",false)
         val manager=c.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel("deadlines","Сроки заказов",NotificationManager.IMPORTANCE_DEFAULT))
         val prefs=c.getSharedPreferences("reminders",Context.MODE_PRIVATE)
@@ -24,10 +27,10 @@ class Reminders(context: Context, params: WorkerParameters): CoroutineWorker(con
             val date=runCatching { LocalDate.parse(o.deadline) }.getOrNull() ?: continue
             val days=ChronoUnit.DAYS.between(today,date)
             val due=when(o.state) {
-                Status.READY -> days in listOf(3L,1L,0L,-1L)
-                Status.RETURN_PLANNED -> days in listOf(3L,0L,-1L)
-                Status.TRANSIT -> days==0L
-                Status.REFUND -> days==0L || days == -3L
+                Status.READY -> days in listOf(3L,2L,1L,0L,-1L) || (days < -1L && days % 3L == 0L)
+                Status.RETURN_PLANNED -> days in 0L..3L || days == -1L
+                Status.TRANSIT -> days in -1L..0L
+                Status.REFUND -> days==0L || (days<0L && days % 3L==0L)
                 else -> false
             }
             val key="${o.id}:${o.status}:${o.deadline}:$today"
@@ -38,7 +41,7 @@ class Reminders(context: Context, params: WorkerParameters): CoroutineWorker(con
                 .setVisibility(Notification.VISIBILITY_PRIVATE)
                 .setPublicVersion(Notification.Builder(c,"deadlines").setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle("Забери").setContentText("Проверьте сроки заказов").build())
                 .setContentTitle(o.state.deadlineLabel ?: "Проверь заказ")
-                .setContentText("${o.name} · ${o.store} · $date").setContentIntent(pending).setAutoCancel(true).build())
+                .setContentText(if(details) "${o.name} · ${o.store} · $date" else "Откройте приложение, чтобы проверить заказ").setContentIntent(pending).setAutoCancel(true).build())
             prefs.edit().putBoolean(key,true).apply()
         }
         prefs.edit().also { editor -> prefs.all.keys.filterNot { it.endsWith(":$today") }.forEach { editor.remove(it) } }.apply()

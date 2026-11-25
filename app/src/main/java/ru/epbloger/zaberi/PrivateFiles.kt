@@ -69,7 +69,7 @@ object PrivateFiles{
         val bounds=BitmapFactory.Options().apply{inJustDecodeBounds=true};BitmapFactory.decodeByteArray(raw,0,raw.size,bounds)
         require(bounds.outWidth>0&&bounds.outHeight>0){"Неподдерживаемое изображение"}
         var sample=1
-        while(maxOf(bounds.outWidth,bounds.outHeight)/sample>1200)sample*=2
+        while((maxOf(bounds.outWidth,bounds.outHeight).toLong()+sample-1)/sample>1200)sample*=2
         val bitmap=BitmapFactory.decodeByteArray(raw,0,raw.size,BitmapFactory.Options().apply{inSampleSize=sample})?:error("Не удалось открыть изображение")
         val bytes=try{
             var result=ByteArray(0)

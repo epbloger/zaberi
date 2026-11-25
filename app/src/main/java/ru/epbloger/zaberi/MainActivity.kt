@@ -59,8 +59,10 @@ class MainActivity:ComponentActivity(){
         if(savedInstanceState==null)handle(intent)
         Reminders.enqueue(this)
         setContent{
-            MaterialTheme(colorScheme=if(isSystemInDarkTheme())darkColorScheme(primary=Color(0xFFA9B2FF))else lightColorScheme(primary=Brand,background=Color(0xFFF7F8FC),surface=Color.White)){
-                Home(shared,openId,{shared=null},{openId=null})
+            val preferences=remember{Preferences(applicationContext)}
+            val dark=when(preferences.theme){"dark"->true;"light"->false;else->isSystemInDarkTheme()}
+            MaterialTheme(colorScheme=if(dark)darkColorScheme(primary=Color(0xFFA9B2FF))else lightColorScheme(primary=Brand,background=Color(0xFFF7F8FC),surface=Color.White)){
+                Home(shared,openId,{shared=null},{openId=null},preferences)
             }
         }
     }
@@ -68,7 +70,7 @@ class MainActivity:ComponentActivity(){
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable fun Home(shared:String?,openId:String?,consume:()->Unit,consumeId:()->Unit,vm:Model=viewModel()){
+@Composable fun Home(shared:String?,openId:String?,consume:()->Unit,consumeId:()->Unit,preferences:Preferences,vm:Model=viewModel()){
     val orders by vm.orders.collectAsStateWithLifecycle()
     val tx by vm.transactions.collectAsStateWithLifecycle()
     val history by vm.history.collectAsStateWithLifecycle()
@@ -92,7 +94,7 @@ class MainActivity:ComponentActivity(){
         floatingActionButton={if(order==null&&tab==0)ExtendedFloatingActionButton(onClick={imported="";add=true},icon={Icon(Icons.Default.Add,null)},text={Text("Заказ")})}
     ){pad->
         Box(Modifier.fillMaxSize().padding(pad)){
-            when{order!=null->Detail(order,history.filter{it.orderId==order.id},vm,{selected=null});tab==0->Orders(orders,{selected=it.id});tab==1->CalendarPage(orders,{selected=it.id});tab==2->Stats(orders,tx);else->SettingsPage()}
+            when{order!=null->Detail(order,history.filter{it.orderId==order.id},vm,{selected=null});tab==0->Orders(orders,{selected=it.id});tab==1->CalendarPage(orders,{selected=it.id});tab==2->Stats(orders,tx);else->SettingsPage(preferences)}
         }
     }
     if(add)OrderForm(null,imported,{add=false}){o->vm.add(o);add=false;tab=0}
@@ -276,14 +278,24 @@ class MainActivity:ComponentActivity(){
         items(byStore){(store,total)->Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(store);Text(money(total),fontWeight=FontWeight.SemiBold)}}
     }
 }
-@Composable private fun SettingsPage(){
+@Composable private fun SettingsPage(preferences:Preferences){
     val ctx=LocalContext.current
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
         Text("Напоминания",style=MaterialTheme.typography.titleLarge)
-        Text("Проверяем сроки в дневное время. Android может задерживать уведомления при энергосбережении.")
+        Row(verticalAlignment=Alignment.CenterVertically){Text("Напоминания о сроках",Modifier.weight(1f));Switch(preferences.enabled,{preferences.enabled(it)})}
+        if(preferences.enabled){
+            Row(verticalAlignment=Alignment.CenterVertically){Text("Начинать с",Modifier.weight(1f));IconButton(onClick={preferences.hour(preferences.hour-1)},enabled=preferences.hour>7){Icon(Icons.Default.Remove,"Раньше")};Text("%02d:00".format(preferences.hour));IconButton(onClick={preferences.hour(preferences.hour+1)},enabled=preferences.hour<21){Icon(Icons.Default.Add,"Позже")}}
+            Row(verticalAlignment=Alignment.CenterVertically){Text("Показывать названия товаров в уведомлениях",Modifier.weight(1f));Switch(preferences.showDetails,{preferences.details(it)})}
+        }
+        Text("Напоминания проверяются в выбранное дневное время. Android может задерживать их при энергосбережении.")
         Primary("Настройки уведомлений"){
             if(Build.VERSION.SDK_INT>=33&&ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)(ctx as? ComponentActivity)?.requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),1)
             else ctx.startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,ctx.packageName))
+        }
+        HorizontalDivider()
+        Text("Оформление",style=MaterialTheme.typography.titleLarge)
+        listOf("system" to "Как в системе","light" to "Светлая","dark" to "Тёмная").forEach{(key,label)->
+            Row(verticalAlignment=Alignment.CenterVertically,modifier=Modifier.fillMaxWidth().clickable{preferences.theme(key)}){RadioButton(preferences.theme==key,{preferences.theme(key)});Text(label)}
         }
         HorizontalDivider()
         Text("О приложении",style=MaterialTheme.typography.titleLarge)
