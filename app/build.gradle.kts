@@ -13,6 +13,7 @@ android {
   applicationId = "ru.epbloger.zaberi"
   minSdk = 26
   targetSdk = 35
+  testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   versionCode = 100
   versionName = "1.0.0-rc1"
   buildConfigField("String","BANNER_ID","\""+configuredBannerId+"\"")
@@ -36,5 +37,8 @@ dependencies {
  kapt("androidx.room:room-compiler:2.6.1")
  implementation("androidx.work:work-runtime-ktx:2.10.0")
  testImplementation("junit:junit:4.13.2")
+ androidTestImplementation("androidx.test.ext:junit:1.2.1")
+ androidTestImplementation("androidx.test:runner:1.6.2")
+ androidTestImplementation("androidx.test:core-ktx:1.6.1")
 }
 kapt { arguments { arg("room.schemaLocation", "$projectDir/schemas") } }

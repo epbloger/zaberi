@@ -142,7 +142,7 @@ class MainActivity:ComponentActivity(){
         item{Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("Активные","В пути","Можно забрать","Возвраты","История","Все").forEach{FilterChip(selected=filter==it,onClick={filter=it},label={Text(it)})}}}
         if(orders.isNotEmpty())item{OrderFilters(orders,shop,{shop=it},category,{category=it},grouped,{grouped=it})}
         if(visible.isEmpty())item{
-            EmptyOrders(orders.isEmpty(),if(orders.isEmpty())addOrder else {filter="Все";shop="";category="";query=""})
+            EmptyOrders(orders.isEmpty()){if(orders.isEmpty())addOrder() else {filter="Все";shop="";category="";query=""}}
         }else item{Text(if(filter=="Активные")"Мои заказы" else filter,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)}
         if(grouped){
             visible.groupBy{if(it.point.isBlank())"Пункт не указан" else it.store+" · "+it.point}.forEach{(title,group)->
@@ -264,7 +264,7 @@ class MainActivity:ComponentActivity(){
     val duplicate=old==null&&link.isNotBlank()&&orders.any{!it.state.archived&&it.link.trim()==link.trim()}
     val parsed=parseMoney(price)
     val state=Status.valueOf(status)
-    val valid=name.isNotBlank()&&name.length<=200&&store.isNotBlank()&&store.length<=200&&category.length<=200&&point.length<=200&&(!duplicate||duplicateConfirmed)&&(price.isBlank()||parsed!=null)&&(!paid||parsed!=null)&&validDate(deadline)&&(old==null||parsed==null||parsed>=old.paid)
+    val valid=name.isNotBlank()&&name.length<=200&&store.isNotBlank()&&store.length<=200&&category.length<=200&&point.length<=200&&link.length<=8192&&note.length<=10000&&(!duplicate||duplicateConfirmed)&&(price.isBlank()||parsed!=null)&&(!paid||parsed!=null)&&validDate(deadline)&&(old==null||parsed==null||parsed>=old.paid)
     Dialog(onDismissRequest=close,properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)){
       Scaffold(modifier=Modifier.fillMaxSize().imePadding(),containerColor=MaterialTheme.colorScheme.background,
         topBar={TopAppBar(title={Text(if(old==null)"Новый заказ" else "Редактировать",fontWeight=FontWeight.Bold)},navigationIcon={IconButton(onClick=close){Icon(Icons.Default.Close,"Закрыть")}})},

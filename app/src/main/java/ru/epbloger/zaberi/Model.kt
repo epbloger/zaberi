@@ -36,7 +36,7 @@ class Model(app: Application): AndroidViewModel(app) {
     }
     fun forgetCatalog(id:String)=change{dao.forget(id)}
     fun add(order: Order) = change {
-        require(order.name.isNotBlank() && order.store.isNotBlank())
+        require(order.name.isNotBlank() && order.store.isNotBlank() && order.paid>=0 && (order.price==null||order.price>=order.paid))
         dao.insert(order)
         rememberValues(order)
         if (order.paid > 0) dao.transaction(Transaction(uid(),order.id,today(),order.paid))

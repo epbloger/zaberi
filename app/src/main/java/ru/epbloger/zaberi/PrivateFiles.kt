@@ -56,7 +56,7 @@ private fun orderJson(o:Order)=JSONObject().put("id",o.id).put("name",o.name).pu
     .put("note",o.note).put("created",o.created).put("expected",o.expectedRefund).put("received",o.receivedRefund).put("cancelled",o.cancelled).put("returned",o.returned).put("category",o.category)
 private fun readOrder(j:JSONObject):Order {
     val o=Order(j.getString("id"),j.getString("name"),j.getString("store"),if(j.isNull("price"))null else j.getLong("price"),j.getLong("paid"),j.getString("status"),j.nullString("deadline"),j.getString("point"),j.getString("link"),j.getString("note"),j.getString("created"),j.getLong("expected"),j.getLong("received"),j.getBoolean("cancelled"),j.getBoolean("returned"),j.optString("category",""))
-    require(o.id.isNotBlank()&&o.id.length<=128&&o.name.isNotBlank()&&o.store.isNotBlank()&&o.paid in 0..999999999999L)
+    require(o.id.isNotBlank()&&o.id.length<=128&&o.name.isNotBlank()&&o.name.length<=200&&o.store.isNotBlank()&&o.store.length<=200&&o.point.length<=200&&o.category.length<=200&&o.link.length<=8192&&o.note.length<=10000&&o.paid in 0..999999999999L)
     require(o.price==null||o.price in o.paid..999999999999L)
     require(o.expectedRefund in 0..o.paid&&o.receivedRefund in 0..o.expectedRefund)
     require(o.state!=Status.REFUND||o.receivedRefund<o.expectedRefund)
@@ -103,7 +103,7 @@ object PrivateFiles{
         val transactions=json.getJSONArray("transactions").objects(50000).map{Transaction(it.getString("id"),it.getString("order"),it.getString("date"),it.getLong("amount")).also{t->require(t.orderId in ids&&t.amount in -999999999999L..999999999999L&&t.amount!=0L);LocalDate.parse(t.date)}}
         val histories=json.getJSONArray("history").objects(100000).map{History(it.getString("id"),it.getString("order"),it.getString("date"),it.getString("label")).also{h->require(h.orderId in ids);LocalDateTime.parse(h.date)}}
         val photos=json.getJSONArray("photos").objects(50000).map{Attachment(it.getString("id"),it.getString("order"),Base64.decode(it.getString("jpeg"),Base64.NO_WRAP)).also{a->require(a.orderId in ids&&a.jpeg.size in 1..MAX_PHOTO);val b=BitmapFactory.Options().apply{inJustDecodeBounds=true};BitmapFactory.decodeByteArray(a.jpeg,0,a.jpeg.size,b);require(b.outWidth in 1..1200&&b.outHeight in 1..1200)}}
-        require(photos.groupingBy{it.orderId}.eachCount().values.all{it<=5})
+        require(photos.groupingBy{it.orderId}.eachCount().values.all{it<=5}&&photos.sumOf{it.jpeg.size.toLong()}<=20L*1024*1024)
         val catalog=(json.optJSONArray("catalog")?:JSONArray()).objects(30000).map{j->
             CatalogEntry(j.getString("id"),j.getString("kind"),j.getString("parent"),j.getString("value")).also{c->
                 require(c.id.isNotBlank()&&c.kind in listOf("store","point","category")&&c.value.isNotBlank()&&c.value.length<=200&&(c.kind!="point"||c.parent.isNotBlank()))

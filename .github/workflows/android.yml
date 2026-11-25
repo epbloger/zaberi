@@ -45,6 +45,8 @@ jobs:
         run: gradle --no-daemon --stacktrace testDebugUnitTest
       - name: Android lint
         run: gradle --no-daemon --stacktrace lintDebug
+      - name: Compile Android integration tests
+        run: gradle --no-daemon --stacktrace assembleDebugAndroidTest
       - uses: actions/upload-artifact@v4
         with:
           name: zaberi-debug
