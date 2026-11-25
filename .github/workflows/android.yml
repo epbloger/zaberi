@@ -1,7 +1,7 @@
 name: Android debug
 on:
   push:
-    branches: [main]
+    branches: [ads-test]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -26,7 +26,7 @@ jobs:
       - run: gradle --no-daemon testDebugUnitTest lintDebug assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: zaberi-debug
+          name: zaberi-ads-test-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
