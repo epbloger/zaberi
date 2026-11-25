@@ -45,25 +45,15 @@ jobs:
         with:
           gradle-version: '8.9'
       - name: Compile debug APK
-        run: gradle --no-daemon --stacktrace assembleDebug
+        run: bash .github/scripts/gradle-retry.sh assembleDebug
       - name: Unit tests
-        run: gradle --no-daemon --stacktrace testDebugUnitTest
+        run: bash .github/scripts/gradle-retry.sh testDebugUnitTest
       - name: Android lint
-        run: gradle --no-daemon --stacktrace lintDebug
+        run: bash .github/scripts/gradle-retry.sh lintDebug
       - name: Compile Android integration tests
-        run: gradle --no-daemon --stacktrace assembleDebugAndroidTest
-      - name: Check unsigned release packaging
-        env:
-          ORG_GRADLE_PROJECT_zaberiBannerId: ${{ (github.event_name == 'pull_request' && github.head_ref == 'release-1.0-dev' && github.event.pull_request.head.repo.full_name == github.repository) && secrets.ZABERI_BANNER_ID || '' }}
-          ORG_GRADLE_PROJECT_zaberiInterstitialId: ${{ (github.event_name == 'pull_request' && github.head_ref == 'release-1.0-dev' && github.event.pull_request.head.repo.full_name == github.repository) && secrets.ZABERI_INTERSTITIAL_ID || '' }}
-          ORG_GRADLE_PROJECT_zaberiDistributionCandidate: ${{ github.event_name == 'pull_request' && github.head_ref == 'release-1.0-dev' && github.event.pull_request.head.repo.full_name == github.repository }}
-        run: |
-          set -euo pipefail
-          if [[ "$ORG_GRADLE_PROJECT_zaberiDistributionCandidate" == true ]] && [[ -z "$ORG_GRADLE_PROJECT_zaberiBannerId" || -z "$ORG_GRADLE_PROJECT_zaberiInterstitialId" ]]; then
-            echo "::error::Configure repository Actions secrets ZABERI_BANNER_ID and ZABERI_INTERSTITIAL_ID before building a distribution candidate."
-            exit 1
-          fi
-          gradle --no-daemon --stacktrace assembleRelease lintRelease
+        run: bash .github/scripts/gradle-retry.sh assembleDebugAndroidTest
+      - name: Check release packaging without production credentials
+        run: bash .github/scripts/gradle-retry.sh assembleRelease lintRelease
       - name: Enable KVM for release candidate tests
         id: emulator_prerequisites
         if: github.head_ref == 'release-1.0-dev'
@@ -102,13 +92,26 @@ jobs:
             adb shell ime list -s
             adb shell settings get secure default_input_method
             adb shell dumpsys input_method > /tmp/zaberi-ime.txt
-            gradle --no-daemon --stacktrace connectedDebugAndroidTest
+            bash .github/scripts/gradle-retry.sh connectedDebugAndroidTest
       - uses: actions/upload-artifact@v4
         with:
           name: zaberi-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
+      - name: Build production APK with configured advertising blocks
+        if: ${{ github.event_name == 'pull_request' && github.head_ref == 'release-1.0-dev' && github.event.pull_request.head.repo.full_name == github.repository }}
+        env:
+          ORG_GRADLE_PROJECT_zaberiBannerId: ${{ (github.event_name == 'pull_request' && github.head_ref == 'release-1.0-dev' && github.event.pull_request.head.repo.full_name == github.repository) && secrets.ZABERI_BANNER_ID || '' }}
+          ORG_GRADLE_PROJECT_zaberiInterstitialId: ${{ (github.event_name == 'pull_request' && github.head_ref == 'release-1.0-dev' && github.event.pull_request.head.repo.full_name == github.repository) && secrets.ZABERI_INTERSTITIAL_ID || '' }}
+          ORG_GRADLE_PROJECT_zaberiDistributionCandidate: ${{ github.event_name == 'pull_request' && github.head_ref == 'release-1.0-dev' && github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          set -euo pipefail
+          if [[ "$ORG_GRADLE_PROJECT_zaberiDistributionCandidate" == true ]] && [[ -z "$ORG_GRADLE_PROJECT_zaberiBannerId" || -z "$ORG_GRADLE_PROJECT_zaberiInterstitialId" ]]; then
+            echo "::error::Configure repository Actions secrets ZABERI_BANNER_ID and ZABERI_INTERSTITIAL_ID before building a distribution candidate."
+            exit 1
+          fi
+          bash .github/scripts/gradle-retry.sh assembleRelease lintRelease
       - name: Prepare unsigned distribution APK
         if: ${{ github.event_name == 'pull_request' && github.head_ref == 'release-1.0-dev' && github.event.pull_request.head.repo.full_name == github.repository }}
         shell: bash
