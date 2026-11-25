@@ -61,9 +61,16 @@ class ReleasePresentationTest {
         try{
             assertFalse(preferences.personalizedAds)
             compose.setContent{MaterialTheme{Column{AdsSettings(preferences)}}}
-            compose.onNodeWithText("Персонализированная реклама не используется.",substring=true).assertExists()
             compose.onNodeWithText("Отключить рекламу в настройках нельзя.",substring=true).assertExists()
-            compose.onAllNodes(isToggleable()).assertCountEquals(0)
+            if(BuildConfig.STORE_AGE<12){
+                compose.onNodeWithText("Персонализированная реклама не используется",substring=true).assertExists()
+                compose.onAllNodes(isToggleable()).assertCountEquals(0)
+            }else{
+                compose.onNode(isToggleable()).assertIsOff().performClick()
+                compose.runOnIdle{assertFalse(preferences.personalizedAds)}
+                compose.onNodeWithText("Разрешить персонализацию").assertExists()
+                compose.runOnIdle{preferences.setAdConsent(true);assertTrue(preferences.personalizedAds);preferences.confirmAdultAds(false);assertFalse(preferences.personalizedAds)}
+            }
         }finally{
             storage.edit().clear().commit()
         }
