@@ -9,6 +9,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -199,6 +204,7 @@ class MainActivity:ComponentActivity(){
             Status.CANCELLED->Unit
         }
         if(o.paid==0L&&o.state in listOf(Status.TRANSIT,Status.READY,Status.RECEIVED))OutlinedButton(onClick={ask("pay",o.price)}){Text("Отметить оплату")}
+        Photos(o.id,vm)
         HorizontalDivider()
         Text("История заказа",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
         history.forEach{Text(it.date.take(10)+" · "+it.label,style=MaterialTheme.typography.bodyMedium)}
@@ -281,8 +287,77 @@ class MainActivity:ComponentActivity(){
         }
         HorizontalDivider()
         Text("О приложении",style=MaterialTheme.typography.titleLarge)
-        Text("Забери 0.1.0 · тестовая версия")
+        Text("Забери 0.2.0 · тестовая версия")
         Text("Заказы хранятся на устройстве. Интернет и учётная запись не требуются. Реклама в этой версии не подключена.")
-        Text("В этой сборке нет резервного копирования. Удаление приложения приведёт к потере данных.",color=MaterialTheme.colorScheme.error)
+        BackupPanel()
+    }
+}
+
+@Composable private fun Photos(id:String,vm:Model){
+    val flow=remember(id){vm.photos(id)}
+    val photos by flow.collectAsStateWithLifecycle(initialValue=emptyList())
+    var preview by remember{mutableStateOf<String?>(null)}
+    val picker=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()){uri->if(uri!=null)vm.addPhoto(id,uri)}
+    Text("Фото заказа",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+    Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){
+        photos.forEach{a->
+            val bitmap=remember(a.id){android.graphics.BitmapFactory.decodeByteArray(a.jpeg,0,a.jpeg.size)?.asImageBitmap()}
+            if(bitmap!=null)Image(bitmap,"Фото заказа",Modifier.size(90.dp).clickable{preview=a.id})
+        }
+    }
+    if(photos.size<5)OutlinedButton(onClick={picker.launch("image/*")}){Icon(Icons.Default.Add,null);Text("Добавить фото")}
+    val current=photos.firstOrNull{it.id==preview}
+    if(current!=null){
+        val bitmap=remember(current.id){android.graphics.BitmapFactory.decodeByteArray(current.jpeg,0,current.jpeg.size)?.asImageBitmap()}
+        AlertDialog(onDismissRequest={preview=null},title={Text("Фото заказа")},text={if(bitmap!=null)Image(bitmap,"Фото заказа",Modifier.fillMaxWidth())},
+            confirmButton={TextButton(onClick={vm.deletePhoto(current.id);preview=null}){Text("Удалить",color=MaterialTheme.colorScheme.error)}},dismissButton={TextButton(onClick={preview=null}){Text("Закрыть")}})
+    }
+}
+@Composable private fun BackupPanel(){
+    val ctx=LocalContext.current;val scope=rememberCoroutineScope()
+    var action by remember{mutableStateOf("")}
+    var password by remember{mutableStateOf("")}
+    var confirm by remember{mutableStateOf("")}
+    var busy by remember{mutableStateOf(false)}
+    var message by remember{mutableStateOf("")}
+    fun run(uri:android.net.Uri?,kind:String){
+        val pass=password;password="";confirm="";action=""
+        if(uri==null)return
+        busy=true
+        scope.launch{
+            try{
+                when(kind){"export"->PrivateFiles.export(ctx,uri,pass);"restore"->PrivateFiles.restore(ctx,uri,pass);else->PrivateFiles.csv(ctx,uri)}
+                message=when(kind){"restore"->"Данные восстановлены";"export"->"Защищённая копия сохранена";else->"Таблица сохранена"}
+            }catch(e:kotlinx.coroutines.CancellationException){throw e}
+            catch(e:Exception){message=if(kind=="restore")"Не удалось восстановить: проверьте пароль и файл. При ошибке проверки данные не заменяются." else "Не удалось сохранить файл."}
+            finally{busy=false}
+        }
+    }
+    val export=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")){run(it,"export")}
+    val restore=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){run(it,"restore")}
+    val csv=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")){run(it,"csv")}
+    HorizontalDivider()
+    Text("Резервное копирование",style=MaterialTheme.typography.titleLarge)
+    Text("Копия заказов, операций, истории и фото защищена паролем. Восстановление заменяет текущие заказы. Пароль восстановить нельзя.")
+    OutlinedButton(enabled=!busy,onClick={action="export";password="";confirm=""},modifier=Modifier.fillMaxWidth()){Text("Создать защищённую копию")}
+    OutlinedButton(enabled=!busy,onClick={action="restore";password="";confirm=""},modifier=Modifier.fillMaxWidth()){Text("Восстановить из копии")}
+    OutlinedButton(enabled=!busy,onClick={action="csv"},modifier=Modifier.fillMaxWidth()){Text("Экспорт операций CSV")}
+    if(busy)LinearProgressIndicator(Modifier.fillMaxWidth())
+    if(message.isNotBlank())Text(message)
+    if(action.isNotEmpty()){
+        val kind=action
+        AlertDialog(onDismissRequest={action="";password="";confirm=""},title={Text(when(kind){"export"->"Пароль резервной копии";"restore"->"Заменить текущие данные?";else->"Экспорт операций"})},text={
+            Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
+                if(kind=="csv")Text("CSV не зашифрован и содержит названия покупок и суммы. Сохраняйте его только в доверенном месте.")
+                else{
+                    if(kind=="restore")Text("Все текущие заказы, операции и фото будут заменены содержимым копии. Сначала сохраните текущие данные, если они нужны.")
+                    OutlinedTextField(password,{password=it},label={Text("Пароль (от 8 символов)")},visualTransformation=PasswordVisualTransformation(),singleLine=true)
+                    if(kind=="export")OutlinedTextField(confirm,{confirm=it},label={Text("Повторите пароль")},visualTransformation=PasswordVisualTransformation(),singleLine=true)
+                }
+            }
+        },confirmButton={Button(enabled=kind=="csv"||(password.length>=8&&(kind!="export"||password==confirm)),onClick={
+            action=""
+            when(kind){"export"->export.launch("zaberi-"+today()+".zaberi");"restore"->restore.launch(arrayOf("application/octet-stream","*/*"));else->csv.launch("zaberi-"+today()+".csv")}
+        }){Text("Продолжить")}},dismissButton={TextButton(onClick={action="";password="";confirm=""}){Text("Отмена")}})
     }
 }

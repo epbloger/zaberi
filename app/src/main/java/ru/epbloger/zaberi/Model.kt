@@ -35,6 +35,7 @@ class Model(app: Application): AndroidViewModel(app) {
         require(price == null || price >= o.paid) { "Цена не может быть меньше оплаченной суммы" }
         dao.update(o.copy(name=name,store=store,price=price,deadline=if(o.state.deadlineLabel!=null) deadline else null,point=point,link=link,note=note))
         log(id,"Изменены сведения")
+        getApplication<Application>().getSystemService(android.app.NotificationManager::class.java).cancel(id.hashCode())
     }
     fun act(id: String, event: String, deadline: String? = null, amount: Long? = null) = change {
         val o = dao.get(id) ?: error("Заказ не найден")
@@ -45,6 +46,7 @@ class Model(app: Application): AndroidViewModel(app) {
         val actualState = if(state==Status.REFUND && expected==0L) (if(event=="cancel") Status.CANCELLED else Status.DONE) else state
         dao.update(o.copy(status=actualState.name, deadline=if(actualState.deadlineLabel!=null) deadline else null, expectedRefund=expected, receivedRefund=0, cancelled=event=="cancel", returned=o.returned || event=="returned"))
         log(id,actualState.label)
+        getApplication<Application>().getSystemService(android.app.NotificationManager::class.java).cancel(id.hashCode())
     }
     fun pay(id: String, amount: Long) = change {
         val o = dao.get(id) ?: error("Заказ не найден")
@@ -61,5 +63,10 @@ class Model(app: Application): AndroidViewModel(app) {
         dao.update(o.copy(receivedRefund=received,status=state.name,deadline=if(state==Status.REFUND) o.deadline else null))
         dao.transaction(Transaction(uid(),id,today(),-amount)); log(id,if(state==Status.REFUND) "Частичный возврат" else "Возврат завершён")
     }
-    fun remove(id: String) = change { dao.get(id)?.let { dao.delete(it) } }
+    fun photos(id:String)=dao.photos(id)
+    fun addPhoto(id:String,uri:android.net.Uri)=viewModelScope.launch{
+        try{PrivateFiles.addPhoto(getApplication(),id,uri)}catch(e:kotlinx.coroutines.CancellationException){throw e}catch(e:Exception){errors.emit("Не удалось добавить фото: "+(e.message?:"ошибка"))}
+    }
+    fun deletePhoto(id:String)=change{dao.removePhoto(id)}
+    fun remove(id: String) = change { dao.get(id)?.let { dao.delete(it) };getApplication<Application>().getSystemService(android.app.NotificationManager::class.java).cancel(id.hashCode()) }
 }
