@@ -9,6 +9,9 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.core.app.ApplicationProvider
 import android.content.Context
+import android.content.ContextWrapper
+import android.content.SharedPreferences
+import androidx.compose.ui.test.*
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
@@ -44,6 +47,28 @@ class ReleasePresentationTest {
             assertTrue("Both themes checked",unique.size>=2)
             assertTrue("Semantic tones must be distinct",unique.all{it==4})
             assertTrue("Action labels need at least 4.5:1 contrast",ratios.all{it>=4.5f})
+        }
+    }
+
+    @Test fun advertisingSettingsOnlyControlPersonalization(){
+        val app=ApplicationProvider.getApplicationContext<Context>()
+        val storage=app.getSharedPreferences("advertising_settings_test",Context.MODE_PRIVATE)
+        storage.edit().clear().commit()
+        val isolated=object:ContextWrapper(app){
+            override fun getSharedPreferences(name:String?,mode:Int):SharedPreferences=storage
+        }
+        val preferences=Preferences(isolated)
+        try{
+            assertFalse(preferences.personalizedAds)
+            compose.setContent{MaterialTheme{Column{AdsSettings(preferences)}}}
+            compose.onNodeWithText("Разрешить персонализацию").assertExists()
+            compose.onNodeWithText("Отключить рекламу этой настройкой нельзя.",substring=true).assertExists()
+            compose.onNode(isToggleable()).assertIsOff().performClick().assertIsOn()
+            compose.runOnIdle{assertTrue(Preferences(isolated).personalizedAds)}
+            compose.onNode(isToggleable()).performClick().assertIsOff()
+            compose.runOnIdle{assertFalse(Preferences(isolated).personalizedAds)}
+        }finally{
+            compose.runOnIdle{preferences.personalizedAds(false);storage.edit().clear().commit()}
         }
     }
 
