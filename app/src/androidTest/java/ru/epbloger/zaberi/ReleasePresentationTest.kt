@@ -69,7 +69,7 @@ class ReleasePresentationTest {
                 compose.onNode(isToggleable()).assertIsOff().performClick()
                 compose.runOnIdle{assertFalse(preferences.personalizedAds)}
                 compose.onNodeWithText("Разрешить персонализацию").assertExists()
-                compose.runOnIdle{preferences.setAdConsent(true);assertTrue(preferences.personalizedAds);preferences.confirmAdultAds(false);assertFalse(preferences.personalizedAds)}
+                compose.runOnIdle{preferences.updateAdConsent(true);assertTrue(preferences.personalizedAds);preferences.confirmAdultAds(false);assertFalse(preferences.personalizedAds)}
             }
         }finally{
             storage.edit().clear().commit()
