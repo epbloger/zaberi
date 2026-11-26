@@ -1,0 +1,40 @@
+name: Publish release metadata 1.0.3
+on:
+  push:
+    branches: [release-metadata-1.0.3]
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Publish GitHub release without APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if gh release view v1.0.3 >/dev/null 2>&1; then
+            echo 'Release already exists; not changing it.'
+            exit 0
+          fi
+          gh release create v1.0.3 --target e4403d88c6d5ac8d92bd203f766fb05119a7a5d8 --title 'ЗАБЕРИ. 1.0.3 — первый публичный выпуск' --latest --notes-file - <<'NOTES'
+          Первый публичный выпуск ЗАБЕРИ. — учёт покупок (1.0.3, версия 111).
+          
+          **[Скачать бесплатно в RuStore](https://www.rustore.ru/catalog/app/ru.epbloger.zaberi)**
+          
+          - Заказы из разных магазинов, статусы, фотографии и заметки.
+          - Календарь, напоминания о получении, хранении и возвратах.
+          - Учёт полных и частичных возвратов, статистика расходов.
+          - Сохранённые пункты выдачи, карта и маршруты.
+          - Светлая и тёмная темы, резервные копии с паролем.
+          - Без регистрации; основные функции работают офлайн.
+          
+          Android 8.0 и новее. Бесплатно, содержит рекламу.
+          
+          [Официальный сайт](https://epbloger.github.io/zaberi/) · Поддержка: helpmoorkis@yandex.ru
+          
+          Исходники опубликованного APK: 9600d8e648b00bb004dac09b1dca9bae7085917a. После сборки менялись только README и LICENSE. Установочный файл распространяется через RuStore; неподписанный APK не публикуется.
+          NOTES
+          gh release view v1.0.3 --json url,tagName,isDraft,isPrerelease
