@@ -42,3 +42,12 @@ fun orderPriority(status:Status,deadline:LocalDate?,today:LocalDate):Int = when 
  status==Status.REFUND||status==Status.RETURN_PLANNED -> 2
  else -> 3
 }
+
+fun reminderDue(status:Status,days:Long,lead:Int,overdue:Boolean):Boolean=when(status){
+ Status.READY,Status.RETURN_PLANNED -> days in 0L..lead.coerceIn(0,7).toLong() || (overdue&&days<0L&&(days== -1L||days%3L==0L))
+ Status.TRANSIT -> days==0L||(overdue&&days== -1L)
+ Status.REFUND -> days==0L||(overdue&&days<0L&&(days== -1L||days%3L==0L))
+ else -> false
+}
+
+fun validPoint(lat:Double?,lon:Double?):Boolean = if(lat==null||lon==null)lat==null&&lon==null else lat.isFinite()&&lon.isFinite()&&lat in -85.05112878..85.05112878&&lon in -180.0..180.0

@@ -4,12 +4,17 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+concurrency:
+  group: android-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
   build:
+    env:
+      ORG_GRADLE_PROJECT_zaberiStoreAge: ${{ vars.ZABERI_STORE_AGE || '0' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
@@ -40,14 +45,121 @@ jobs:
         with:
           gradle-version: '8.9'
       - name: Compile debug APK
-        run: gradle --no-daemon --stacktrace assembleDebug
+        run: bash .github/scripts/gradle-retry.sh assembleDebug
       - name: Unit tests
-        run: gradle --no-daemon --stacktrace testDebugUnitTest
+        run: bash .github/scripts/gradle-retry.sh testDebugUnitTest
       - name: Android lint
-        run: gradle --no-daemon --stacktrace lintDebug
+        run: bash .github/scripts/gradle-retry.sh lintDebug
+      - name: Compile Android integration tests
+        run: bash .github/scripts/gradle-retry.sh assembleDebugAndroidTest
+      - name: Check release packaging without production credentials
+        run: bash .github/scripts/gradle-retry.sh assembleRelease lintRelease
+      - name: Enable KVM for release candidate tests
+        id: emulator_prerequisites
+        if: github.head_ref == 'release-1.0-dev'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run database, migration and adaptive UI tests on Android
+        if: github.head_ref == 'release-1.0-dev'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: |
+            adb shell input keyevent 82
+            adb shell settings put system show_ime_with_hard_keyboard 1
+            adb shell settings --user 0 put secure show_ime_with_hard_keyboard 1
+            adb shell ime list -s
+            adb shell settings get secure default_input_method
+            adb shell dumpsys input_method > /tmp/zaberi-ime.txt
+            bash .github/scripts/verify-adaptive-layouts.sh
+      - name: Verify supported older Android
+        if: ${{ !cancelled() && github.head_ref == 'release-1.0-dev' && steps.emulator_prerequisites.outcome == 'success' }}
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 28
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: |
+            adb shell input keyevent 82
+            adb shell settings put system show_ime_with_hard_keyboard 1
+            adb shell settings --user 0 put secure show_ime_with_hard_keyboard 1
+            adb shell ime list -s
+            adb shell settings get secure default_input_method
+            adb shell dumpsys input_method > /tmp/zaberi-ime.txt
+            bash .github/scripts/gradle-retry.sh connectedDebugAndroidTest
       - uses: actions/upload-artifact@v4
         with:
           name: zaberi-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+          retention-days: 14
+      - name: Build production APK with configured advertising blocks
+        if: ${{ github.event_name == 'pull_request' && github.head_ref == 'release-1.0-dev' && github.event.pull_request.head.repo.full_name == github.repository }}
+        env:
+          ORG_GRADLE_PROJECT_zaberiBannerId: ${{ (github.event_name == 'pull_request' && github.head_ref == 'release-1.0-dev' && github.event.pull_request.head.repo.full_name == github.repository) && secrets.ZABERI_BANNER_ID || '' }}
+          ORG_GRADLE_PROJECT_zaberiInterstitialId: ${{ (github.event_name == 'pull_request' && github.head_ref == 'release-1.0-dev' && github.event.pull_request.head.repo.full_name == github.repository) && secrets.ZABERI_INTERSTITIAL_ID || '' }}
+          ORG_GRADLE_PROJECT_zaberiDistributionCandidate: ${{ github.event_name == 'pull_request' && github.head_ref == 'release-1.0-dev' && github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          set -euo pipefail
+          if [[ "$ORG_GRADLE_PROJECT_zaberiDistributionCandidate" == true ]] && [[ -z "$ORG_GRADLE_PROJECT_zaberiBannerId" || -z "$ORG_GRADLE_PROJECT_zaberiInterstitialId" ]]; then
+            echo "::error::Configure repository Actions secrets ZABERI_BANNER_ID and ZABERI_INTERSTITIAL_ID before building a distribution candidate."
+            exit 1
+          fi
+          bash .github/scripts/gradle-retry.sh assembleRelease lintRelease
+      - name: Prepare unsigned distribution APK
+        if: ${{ github.event_name == 'pull_request' && github.head_ref == 'release-1.0-dev' && github.event.pull_request.head.repo.full_name == github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:?}/build-tools/35.0.0"
+          SRC=app/build/outputs/apk/release/app-release-unsigned.apk
+          test -f "$SRC"
+          "$SDK/zipalign" -c -P 16 4 "$SRC"
+          if "$SDK/apksigner" verify "$SRC" >/dev/null 2>&1; then
+            echo "Unexpected signed release APK" >&2
+            exit 1
+          fi
+          mkdir -p distribution
+          cp "$SRC" distribution/zaberi-1.0.3-unsigned.apk
+          "$SDK/aapt" dump badging "$SRC" > distribution/apk-info.txt
+          grep -F "package: name='ru.epbloger.zaberi' versionCode='111' versionName='1.0.3'" distribution/apk-info.txt
+          grep -Fx "application-label:'ЗАБЕРИ. — учёт покупок'" distribution/apk-info.txt
+          if grep -q '^application-debuggable' distribution/apk-info.txt; then
+            echo "Distribution APK must not be debuggable" >&2
+            exit 1
+          fi
+          "$SDK/aapt" dump permissions "$SRC" > distribution/apk-permissions.txt
+          "$SDK/aapt" dump xmltree "$SRC" AndroidManifest.xml > distribution/apk-manifest.txt
+          if grep -Fq 'com.google.android.gms.permission.AD_ID' distribution/apk-permissions.txt; then
+            echo "Unexpected Google advertising ID permission" >&2
+            exit 1
+          fi
+          printf '%s\n' "$GITHUB_SHA" > distribution/commit.txt
+          printf '%s\n' "$ORG_GRADLE_PROJECT_zaberiStoreAge" > distribution/store-age.txt
+          (cd distribution && sha256sum zaberi-1.0.3-unsigned.apk > SHA256SUMS.txt)
+      - name: Upload unsigned distribution APK
+        if: ${{ github.event_name == 'pull_request' && github.head_ref == 'release-1.0-dev' && github.event.pull_request.head.repo.full_name == github.repository }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: zaberi-1.0.3-unsigned
+          path: distribution/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zaberi-test-reports
+          path: |
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/reports/lint-results-*.html
+            app/build/reports/androidTests/connected/
+            app/build/verification/
+          if-no-files-found: ignore
           retention-days: 14

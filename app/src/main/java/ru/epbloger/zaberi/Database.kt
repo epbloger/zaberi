@@ -10,7 +10,8 @@ data class Order(
     val paid: Long, val status: String, val deadline: String?, val point: String,
     val link: String, val note: String, val created: String, val expectedRefund: Long = 0,
     val receivedRefund: Long = 0, val cancelled: Boolean = false, val returned: Boolean = false,
-    @ColumnInfo(defaultValue="''") val category:String = ""
+    @ColumnInfo(defaultValue="''") val category:String = "",
+    val pointLat:Double?=null, val pointLon:Double?=null
 ) { @get:Ignore val state get() = Status.valueOf(status) }
 @Entity(tableName = "transactions", foreignKeys = [ForeignKey(entity=Order::class, parentColumns=["id"], childColumns=["orderId"], onDelete=ForeignKey.CASCADE)], indices=[Index("orderId")])
 data class Transaction(@PrimaryKey val id: String, val orderId: String, val date: String, val amount: Long)
@@ -19,7 +20,7 @@ data class History(@PrimaryKey val id: String, val orderId: String, val date: St
 @Entity(tableName="attachments",foreignKeys=[ForeignKey(entity=Order::class,parentColumns=["id"],childColumns=["orderId"],onDelete=ForeignKey.CASCADE)],indices=[Index("orderId")])
 data class Attachment(@PrimaryKey val id:String,val orderId:String,val jpeg:ByteArray)
 @Entity(tableName="catalog",indices=[Index(value=["kind","parent","value"],unique=true)])
-data class CatalogEntry(@PrimaryKey val id:String,val kind:String,val parent:String,val value:String)
+data class CatalogEntry(@PrimaryKey val id:String,val kind:String,val parent:String,val value:String,val pointLat:Double?=null,val pointLon:Double?=null)
 @Dao interface OrdersDao {
     @Query("SELECT * FROM orders ORDER BY created DESC, name") fun observe(): Flow<List<Order>>
     @Query("SELECT * FROM orders") suspend fun all(): List<Order>
@@ -35,6 +36,7 @@ data class CatalogEntry(@PrimaryKey val id:String,val kind:String,val parent:Str
     @Query("SELECT * FROM history") suspend fun allHistory():List<History>
     @Query("SELECT * FROM attachments WHERE orderId=:id") fun photos(id:String):Flow<List<Attachment>>
     @Query("SELECT * FROM attachments") suspend fun allPhotos():List<Attachment>
+    @Query("SELECT COALESCE(SUM(length(jpeg)),0) FROM attachments") suspend fun photoBytes():Long
     @Query("SELECT COUNT(*) FROM attachments WHERE orderId=:id") suspend fun photoCount(id:String):Int
     @Insert suspend fun photo(photo:Attachment)
     @Query("DELETE FROM attachments WHERE id=:id") suspend fun removePhoto(id:String)
@@ -42,10 +44,11 @@ data class CatalogEntry(@PrimaryKey val id:String,val kind:String,val parent:Str
     @Query("SELECT * FROM catalog ORDER BY value COLLATE NOCASE") fun catalog():Flow<List<CatalogEntry>>
     @Query("SELECT * FROM catalog") suspend fun allCatalog():List<CatalogEntry>
     @Insert(onConflict=OnConflictStrategy.IGNORE) suspend fun remember(entry:CatalogEntry)
+    @Query("UPDATE catalog SET pointLat=:lat,pointLon=:lon WHERE kind='point' AND parent=:store AND value=:value") suspend fun updatePoint(store:String,value:String,lat:Double,lon:Double)
     @Query("DELETE FROM catalog WHERE id=:id") suspend fun forget(id:String)
     @Query("DELETE FROM catalog") suspend fun clearCatalog()
 }
-@Database(entities=[Order::class, Transaction::class, History::class, Attachment::class, CatalogEntry::class], version=3, exportSchema=true)
+@Database(entities=[Order::class, Transaction::class, History::class, Attachment::class, CatalogEntry::class], version=4, exportSchema=true)
 abstract class ZaberiDb: RoomDatabase() {
     abstract fun orders(): OrdersDao
     companion object {
@@ -64,9 +67,17 @@ abstract class ZaberiDb: RoomDatabase() {
                 db.execSQL("INSERT OR IGNORE INTO catalog SELECT lower(hex(randomblob(16))), 'point', store, point FROM orders WHERE trim(point) <> '' GROUP BY store,point")
             }
         }
+        internal val MIGRATION_3_4:Migration=object:Migration(3,4){
+            override fun migrate(db:SupportSQLiteDatabase){
+                db.execSQL("ALTER TABLE orders ADD COLUMN pointLat REAL")
+                db.execSQL("ALTER TABLE orders ADD COLUMN pointLon REAL")
+                db.execSQL("ALTER TABLE catalog ADD COLUMN pointLat REAL")
+                db.execSQL("ALTER TABLE catalog ADD COLUMN pointLon REAL")
+            }
+        }
         @Volatile private var instance: ZaberiDb? = null
         fun get(context: Context): ZaberiDb = instance ?: synchronized(this) {
-            instance ?: Room.databaseBuilder(context.applicationContext, ZaberiDb::class.java, "zaberi.db").addMigrations(MIGRATION_1_2,MIGRATION_2_3).build().also { instance=it }
+            instance ?: Room.databaseBuilder(context.applicationContext, ZaberiDb::class.java, "zaberi.db").addMigrations(MIGRATION_1_2,MIGRATION_2_3,MIGRATION_3_4).build().also { instance=it }
         }
     }
 }

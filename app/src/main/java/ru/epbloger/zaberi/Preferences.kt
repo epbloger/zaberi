@@ -16,5 +16,34 @@ class Preferences(private val context:Context) {
     fun enabled(value:Boolean){enabled=value;prefs.edit().putBoolean("enabled",value).apply();if(!value)clear() else Reminders.enqueue(context)}
     fun hour(value:Int){hour=value.coerceIn(7,21);prefs.edit().putInt("hour",hour).apply();Reminders.enqueue(context)}
     fun details(value:Boolean){showDetails=value;prefs.edit().putBoolean("details",value).apply();clear();Reminders.enqueue(context)}
+    var leadDays by mutableIntStateOf(prefs.getInt("leadDays",3).coerceIn(0,7))
+        private set
+    var overdue by mutableStateOf(prefs.getBoolean("overdue",true))
+        private set
+    val notificationAsked get()=prefs.getBoolean("notificationAsked",false)
+    fun markNotificationAsked(){prefs.edit().putBoolean("notificationAsked",true).apply()}
+    // Age declaration and consent are independent, local and versioned.
+    var adultAdsConfirmed by mutableStateOf(prefs.getBoolean("adultAdsConfirmed_v1",false))
+        private set
+    var adConsent by mutableStateOf(prefs.getBoolean("adConsent_v1",false))
+        private set
+    val adultAdsEligible:Boolean get()=AdPrivacyPolicy.adultEligible(BuildConfig.STORE_AGE,adultAdsConfirmed)
+    val personalizedAds:Boolean get()=AdPrivacyPolicy.personalized(BuildConfig.STORE_AGE,adultAdsConfirmed,adConsent)
+    fun confirmAdultAds(value:Boolean){
+        adultAdsConfirmed=value
+        if(!value)adConsent=false
+        prefs.edit().putBoolean("adultAdsConfirmed_v1",value).putBoolean("adConsent_v1",adConsent).apply {
+            if(!value) remove("adConsentAt_v1")
+        }.apply()
+    }
+    fun updateAdConsent(value:Boolean){
+        adConsent=value&&adultAdsEligible
+        prefs.edit().putBoolean("adConsent_v1",adConsent).apply {
+            if(adConsent) putLong("adConsentAt_v1",System.currentTimeMillis()) else remove("adConsentAt_v1")
+        }.apply()
+    }
+    fun leadDays(value:Int){leadDays=value.coerceIn(0,7);prefs.edit().putInt("leadDays",leadDays).apply();Reminders.enqueue(context)}
+    fun overdue(value:Boolean){overdue=value;prefs.edit().putBoolean("overdue",value).apply();Reminders.enqueue(context)}
+    init { prefs.edit().remove("personalizedAds").remove("adsEnabled").apply() }
     private fun clear(){context.getSystemService(NotificationManager::class.java).cancelAll()}
 }
