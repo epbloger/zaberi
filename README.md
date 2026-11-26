@@ -8,7 +8,7 @@
 
 Android 8.0+ · Бесплатно · Без регистрации · Основные функции офлайн
 
-[**Официальный сайт**](https://epbloger.github.io/zaberi/) · [**Где скачать**](https://epbloger.github.io/zaberi/#download) · [**Исходный код**](https://github.com/epbloger/zaberi/tree/release-1.0-dev) · [**Поддержка**](mailto:helpmoorkis@yandex.ru)
+[**Официальный сайт**](https://epbloger.github.io/zaberi/) · [**Скачать в RuStore**](https://www.rustore.ru/catalog/app/ru.epbloger.zaberi) · [**Исходный код**](https://github.com/epbloger/zaberi/tree/main) · [**Поддержка**](mailto:helpmoorkis@yandex.ru)
 
 </div>
 
@@ -16,9 +16,9 @@ Android 8.0+ · Бесплатно · Без регистрации · Осно�
 
 ## Скачать
 
-**Скоро в RuStore!** Прямая ссылка на бесплатную загрузку появится здесь и на [официальном сайте](https://epbloger.github.io/zaberi/#download).
+**Уже в RuStore!** Первый публичный выпуск — 1.0.3. Бесплатно, для Android 8.0 и новее.
 
-[Открыть RuStore](https://www.rustore.ru/catalog)
+[**Скачать ЗАБЕРИ. в RuStore →**](https://www.rustore.ru/catalog/app/ru.epbloger.zaberi)
 
 ## Знакомьтесь: ЗАБЕРИ.
 
@@ -66,8 +66,8 @@ Android 8.0+ · Бесплатно · Без регистрации · Осно�
 
 | Документы | Ссылки |
 |---|---|
-| Политика конфиденциальности | [На сайте](https://epbloger.github.io/zaberi/privacy.html) · [Текст в репозитории](https://github.com/epbloger/zaberi/blob/release-1.0-dev/app/src/main/assets/legal/privacy.md) |
-| Условия использования | [На сайте](https://epbloger.github.io/zaberi/terms.html) · [Текст в репозитории](https://github.com/epbloger/zaberi/blob/release-1.0-dev/app/src/main/assets/legal/terms.md) |
+| Политика конфиденциальности | [На сайте](https://epbloger.github.io/zaberi/privacy.html) · [Текст в репозитории](https://github.com/epbloger/zaberi/blob/main/app/src/main/assets/legal/privacy.md) |
+| Условия использования | [На сайте](https://epbloger.github.io/zaberi/terms.html) · [Текст в репозитории](https://github.com/epbloger/zaberi/blob/main/app/src/main/assets/legal/terms.md) |
 | Реклама и сторонние сервисы | [На сайте](https://epbloger.github.io/zaberi/ads.html) |
 | Разработчик и контакты | [На сайте](https://epbloger.github.io/zaberi/developer.html) |
 
@@ -83,7 +83,7 @@ Android 8.0+ · Бесплатно · Без регистрации · Осно�
 
 Не публикуйте в открытых обращениях личные данные, номера заказов, чеки, банковские реквизиты и пароли.
 
-[Документация проекта](https://github.com/epbloger/zaberi/blob/release-1.0-dev/docs/architecture.md)
+[Документация проекта](https://github.com/epbloger/zaberi/blob/main/docs/architecture.md)
 
 © 2026 Moorkis Development. Все права защищены. [Условия использования исходных материалов](LICENSE).
 
