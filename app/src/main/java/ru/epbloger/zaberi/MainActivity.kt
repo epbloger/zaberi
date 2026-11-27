@@ -54,11 +54,11 @@ class MainActivity:ComponentActivity(){
     private var openId by mutableStateOf<String?>(null)
     private fun handle(i:Intent?){
         sharedProductRequest(i)?.let{model.receiveShare(it)}
-        openId=i?.getStringExtra("orderId")
+        if(i?.action!=Intent.ACTION_SEND)openId=runCatching{i?.getStringExtra("orderId")}.getOrNull()
     }
     override fun onCreate(savedInstanceState:Bundle?){
         super.onCreate(savedInstanceState);enableEdgeToEdge()
-        if(savedInstanceState==null)handle(intent)
+        if(savedInstanceState==null)handle(intent) else openId=savedInstanceState.getString("pending_order_id")
         Reminders.enqueue(this)
         setContent{
             val preferences=remember{Preferences(applicationContext)}
@@ -67,6 +67,10 @@ class MainActivity:ComponentActivity(){
                 SafeAppViewport{MapOverlayHost{Home(openId,{openId=null},preferences,model)}}
             }
         }
+    }
+    override fun onSaveInstanceState(outState:Bundle){
+        outState.putString("pending_order_id",openId)
+        super.onSaveInstanceState(outState)
     }
     override fun onNewIntent(intent:Intent){super.onNewIntent(intent);setIntent(intent);handle(intent)}
 }
@@ -103,8 +107,8 @@ class MainActivity:ComponentActivity(){
     var adOpportunity by remember{mutableStateOf(false)}
     var openedStatus by rememberSaveable{mutableStateOf<String?>(null)}
     val notificationPermission=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()){granted->if(granted)Reminders.enqueue(ctx)}
-    LaunchedEffect(guideStep,guidePractice){
-        if(guideStep<0&&!guidePractice&&Build.VERSION.SDK_INT>=33&&preferences.enabled&&ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED&&!preferences.notificationAsked){
+    LaunchedEffect(guideStep,guidePractice,add,editing,shared?.id){
+        if(guideStep<0&&!guidePractice&&!add&&!editing&&shared==null&&Build.VERSION.SDK_INT>=33&&preferences.enabled&&ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED&&!preferences.notificationAsked){
             preferences.markNotificationAsked()
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
@@ -118,13 +122,17 @@ class MainActivity:ComponentActivity(){
     }
     LaunchedEffect(savedForm){savedForm?.let{id->if(add&&!editing&&shared==null&&openId==null&&guideStep<0&&!guidePractice)adOpportunity=true;add=false;editing=false;tab=0;vm.consumeSavedForm(id)}}
     LaunchedEffect(shared?.id,saving,add,editing){if(!saving&&!add&&!editing)shared?.let{openShared(it)}}
+    LaunchedEffect(add,shareId,productImport?.requestId){
+        val id=shareId
+        if(add&&id!=null&&productImport==null)vm.restoreProductImport(id,imported)
+    }
     LaunchedEffect(add,editing,shareId){
         if(!add&&!editing){
             if(shareId!=null)clearImport()
             if(guidePractice){guidePractice=false;guideStep=GuideStep.ORDERS.ordinal;tab=0}
         }
     }
-    LaunchedEffect(openId,orders,saving){if(!saving&&openId!=null&&orders.any{it.id==openId}){guideStep=-1;guidePractice=false;add=false;editing=false;settingsPage="";tab=0;selected=openId;openedStatus=null;consumeId()}}
+    LaunchedEffect(openId,orders,saving,add,editing,shared?.id){if(!saving&&!add&&!editing&&shared==null&&openId!=null&&orders.any{it.id==openId}){guideStep=-1;guidePractice=false;add=false;editing=false;settingsPage="";tab=0;selected=openId;openedStatus=null;consumeId()}}
     val order=orders.firstOrNull{it.id==selected}
     fun closeDetail(){
         if(tab==0&&openedStatus!=null&&order!=null&&openedStatus!=order.status&&order.state in listOf(Status.READY,Status.RECEIVED,Status.DONE)&&!order.returned&&!order.cancelled)adOpportunity=true
@@ -154,7 +162,8 @@ class MainActivity:ComponentActivity(){
             key(if(add)"new:"+(shareId?:"manual") else order?.id){
                 val state=productImport?.takeIf{add&&it.requestId==shareId}
                 OrderForm(if(add)null else order,if(add)imported else "",catalog,orders,saving,{if(!saving){add=false;editing=false}},
-                    sharedState=state,enableLookup=state?.let{current->{preferences.onlineProductImport(true);vm.enrichSharedProduct(current.requestId)}}){o,photo->vm.saveForm(o,!add,photo)}
+                    sharedState=state,enableLookup=state?.let{current->{preferences.onlineProductImport(true);vm.enrichSharedProduct(current.requestId)}},
+                    cancelLookup=state?.let{current->{vm.cancelProductImport(current.requestId)}}){o,photo->vm.saveForm(o,!add,photo)}
             }
             SnackbarHost(snack,Modifier.align(Alignment.TopCenter))
         }

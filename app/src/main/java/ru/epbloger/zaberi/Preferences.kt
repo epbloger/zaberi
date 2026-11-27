@@ -51,5 +51,5 @@ class Preferences(private val context:Context) {
     fun leadDays(value:Int){leadDays=value.coerceIn(0,7);prefs.edit().putInt("leadDays",leadDays).apply();Reminders.enqueue(context)}
     fun overdue(value:Boolean){overdue=value;prefs.edit().putBoolean("overdue",value).apply();Reminders.enqueue(context)}
     init { prefs.edit().remove("personalizedAds").remove("adsEnabled").apply() }
-    private fun clear(){context.getSystemService(NotificationManager::class.java).cancelAll()}
+    private fun clear(){synchronized(reminderNotificationMonitor){context.getSystemService(NotificationManager::class.java)?.cancelAll()}}
 }

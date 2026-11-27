@@ -8,16 +8,19 @@ internal data class ProductImportState(val requestId:String,val seed:SharedProdu
     val title:String?=null,val price:Long?=null,val photo:ByteArray?=null,
     val loading:Boolean=false,val attempted:Boolean=false,val message:String?=null)
 private val sharedUrl=Regex("https?://[^\\s<>\"']+",RegexOption.IGNORE_CASE)
-private val rublePrice=Regex("(?<![\\d.,])([0-9]+(?:[ \\u00a0\\u202f][0-9]{3})*(?:[.,][0-9]{1,2})?)\\s*(?:₽|руб(?:\\.|лей|ля|ль)?(?![\\p{L}])|RUB\\b)",RegexOption.IGNORE_CASE)
+private val rublePrice=Regex("(?<![\\d.,])([+\\-−]?[ \\u00a0\\u202f]*[0-9][0-9., \\u00a0\\u202f]*?)\\s*(?:₽|руб(?:\\.|лей|ля|ль)?(?![\\p{L}])|RUB\\b)",RegexOption.IGNORE_CASE)
+private val validSharedAmount=Regex("(?:[0-9]+|[0-9]{1,3}(?:[ \\u00a0\\u202f][0-9]{3})+)(?:[.,][0-9]{1,2})?")
 internal fun sharedProductSeed(text:String):SharedProductSeed {
     val link=sharedUrl.find(text)?.value?.trimEnd('.',',',';',')',']').orEmpty()
     val clean=sharedUrl.replace(text," ")
-    val prices=rublePrice.findAll(clean).mapNotNull{parseMoney(it.groupValues[1].replace('\u00a0',' ').replace('\u202f',' '))}.distinct().toList()
+    val candidates=rublePrice.findAll(clean).map{it.groupValues[1].trim()}.toList()
+    val prices=candidates.mapNotNull{value->value.takeIf{validSharedAmount.matches(it)}?.let{parseMoney(it.replace('\u00a0',' ').replace('\u202f',' '))}}
+    val price=prices.distinct().singleOrNull()?.takeIf{prices.size==candidates.size}
     val ambiguous=Regex("(?:от|до)\\s*\\d|\\d\\s*[-–—]\\s*\\d",RegexOption.IGNORE_CASE).containsMatchIn(clean)
     val title=clean.lineSequence().map{rublePrice.replace(it,"").trim(' ',':','-','–','—','\t')}
         .firstOrNull{it.isNotBlank()&&it.any(Char::isLetter)&&!it.matches(Regex("(?i)(цена|стоимость|поделиться|ссылка|посмотри(?:те)?(?: товар)?|смотри(?:те)?(?: товар)?|товар|купить)[!:. ]*"))}
         ?.take(120).orEmpty()
-    return SharedProductSeed(title,detectStore(link).orEmpty(),link,if(ambiguous)null else prices.singleOrNull())
+    return SharedProductSeed(title,detectStore(link).orEmpty(),link,if(ambiguous)null else price)
 }
 @Suppress("DEPRECATION")
 internal fun sharedProductRequest(intent:Intent?):SharedProductRequest? {

@@ -36,6 +36,24 @@ class DatabaseIntegrationTest {
         assertTrue(dao.allHistory().isEmpty())
         assertTrue(dao.allPhotos().isEmpty())
     }
+    @Test fun deletingOneOrderPreservesOtherOrdersAndTheirFinancialHistory()=runBlocking{
+        val dao=db.orders()
+        val first=order("first")
+        val second=order("second")
+        db.withTransaction{
+            for(o in listOf(first,second)){
+                dao.insert(o)
+                dao.transaction(Transaction("payment-"+o.id,o.id,"2026-11-20",10000))
+                dao.history(History("history-"+o.id,o.id,"2026-11-20T12:00:00","Добавлен"))
+                dao.photo(Attachment("photo-"+o.id,o.id,byteArrayOf(1,2,3)))
+            }
+        }
+        dao.delete(first)
+        assertEquals(listOf(second),dao.all())
+        assertEquals(listOf(second.id),dao.allTransactions().map{it.orderId})
+        assertEquals(listOf(second.id),dao.allHistory().map{it.orderId})
+        assertEquals(listOf(second.id),dao.allPhotos().map{it.orderId})
+    }
     @Test fun rollbackKeepsOrders()=runBlocking{
         val dao=db.orders()
         dao.insert(order("one"))

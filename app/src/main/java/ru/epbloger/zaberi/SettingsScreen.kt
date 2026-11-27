@@ -141,8 +141,11 @@ import java.util.Locale
         busy=true
         scope.launch{
             try{
-                when(kind){"export"->PrivateFiles.export(ctx,uri,pass);"restore"->PrivateFiles.restore(ctx,uri,pass);else->PrivateFiles.csv(ctx,uri)}
-                message=when(kind){"restore"->"Данные восстановлены";"export"->"Защищённая копия сохранена";else->"Таблица сохранена"}
+                message=when(kind){
+                    "export"->{PrivateFiles.export(ctx,uri,pass);"Защищённая копия сохранена"}
+                    "restore"->if(PrivateFiles.restore(ctx,uri,pass))"Данные восстановлены" else "Данные восстановлены, но не удалось обновить напоминания."
+                    else->{PrivateFiles.csv(ctx,uri);"Таблица сохранена"}
+                }
             }catch(e:kotlinx.coroutines.CancellationException){throw e}
             catch(e:Exception){message=if(kind=="restore")"Не удалось восстановить: проверьте пароль и файл. При ошибке проверки данные не заменяются." else "Не удалось сохранить файл."}
             finally{busy=false}

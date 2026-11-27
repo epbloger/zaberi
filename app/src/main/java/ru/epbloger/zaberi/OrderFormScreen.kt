@@ -51,7 +51,7 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable internal fun OrderForm(old:Order?,imported:String,catalog:List<CatalogEntry>,orders:List<Order>,saving:Boolean,close:()->Unit,
-    sharedState:ProductImportState?=null,enableLookup:(()->Unit)?=null,save:(Order,ByteArray?)->Unit){
+    sharedState:ProductImportState?=null,enableLookup:(()->Unit)?=null,cancelLookup:(()->Unit)?=null,save:(Order,ByteArray?)->Unit){
     val seed=remember(imported){sharedProductSeed(imported)}
     val draftId=rememberSaveable{old?.id?:uid()}
     val draftCreated=rememberSaveable{old?.created?:today()}
@@ -73,13 +73,18 @@ import java.util.Locale
     var category by rememberSaveable{mutableStateOf(old?.category.orEmpty())}
     var advanced by rememberSaveable{mutableStateOf(old!=null||imported.isNotBlank())}
     var duplicateConfirmed by rememberSaveable{mutableStateOf(false)}
-    LaunchedEffect(sharedState?.title,sharedState?.price,linkTouched){
-        if(old==null&&!linkTouched){
-            if(!nameTouched&&name.isBlank())sharedState?.title?.let{name=it}
+    val sourceChanged=linkTouched||(seed.store.isNotBlank()&&store!=seed.store)
+    val importLoading=sharedState?.loading==true&&!sourceChanged
+    LaunchedEffect(sourceChanged,sharedState?.loading){
+        if(sourceChanged&&sharedState?.loading==true)cancelLookup?.invoke()
+    }
+    LaunchedEffect(sharedState?.title,sharedState?.price,sourceChanged){
+        if(old==null&&!sourceChanged){
+            if(!nameTouched)sharedState?.title?.let{name=it}
             if(!priceTouched&&price.isBlank())sharedState?.price?.let{price=number(it)}
         }
     }
-    val importedPhoto=sharedState?.photo?.takeUnless{photoRemoved||linkTouched}
+    val importedPhoto=sharedState?.photo?.takeUnless{photoRemoved||sourceChanged}
     val preview=remember(importedPhoto){importedPhoto?.let{android.graphics.BitmapFactory.decodeByteArray(it,0,it.size)?.asImageBitmap()}}
     val duplicate=old==null&&link.isNotBlank()&&orders.any{!it.state.archived&&it.link.trim()==link.trim()}
     val parsed=parseMoney(price)
@@ -88,7 +93,7 @@ import java.util.Locale
     val focus=LocalFocusManager.current
     val keyboard=LocalSoftwareKeyboardController.current
     AdaptiveActionScreen(title=if(old==null)"Новый заказ" else "Редактировать",close=close,action={
-        Button(colors=actionButtonColors(ActionTone.DELIVERY),enabled=valid&&!saving,onClick={
+        Button(colors=actionButtonColors(ActionTone.DELIVERY),enabled=valid&&!saving&&!importLoading,onClick={
                 val d=if(state.deadlineLabel!=null)deadline.trim().takeIf{it.isNotEmpty()}else null
                 val o=old?.copy(name=name.trim(),store=store.trim(),price=parsed,deadline=d,point=point.trim(),link=link.trim(),note=note.trim(),category=category.trim(),pointLat=pointLat,pointLon=pointLon)?:Order(draftId,name.trim(),store.trim(),parsed,if(paid)parsed?:0 else 0,status,d,point.trim(),link.trim(),note.trim(),draftCreated,category=category.trim(),pointLat=pointLat,pointLon=pointLon)
                 focus.clearFocus();keyboard?.hide();save(o,importedPhoto)
@@ -100,9 +105,10 @@ import java.util.Locale
                     Column(Modifier.padding(UiSpacing.Card),verticalArrangement=Arrangement.spacedBy(UiSpacing.Related)){
                         Text("Импорт из магазина",fontWeight=FontWeight.Bold)
                         Text("Проверьте данные. Цена карточки может отличаться от суммы покупки. Отметьте оплату только если уже заплатили.",style=MaterialTheme.typography.bodySmall)
-                        if(sharedState.loading&&!linkTouched){
+                        if(importLoading){
                             LinearProgressIndicator(Modifier.fillMaxWidth().testTag("import_loading"))
-                            Text("Получаем сведения о товаре… Можно продолжить заполнение вручную.",style=MaterialTheme.typography.bodySmall)
+                            Text("Получаем сведения о товаре… Можно заполнить остальные поля или остановить загрузку.",style=MaterialTheme.typography.bodySmall)
+                            TextButton(onClick={cancelLookup?.invoke()},modifier=Modifier.testTag("cancel_import_lookup")){Text("Остановить загрузку")}
                         }
                         if(preview!=null){
                             Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(UiSpacing.Related)){
@@ -113,7 +119,7 @@ import java.util.Locale
                                 }
                             }
                         }
-                        if(!linkTouched){
+                        if(!sourceChanged){
                             sharedState.message?.let{Text(it,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
                             if(!sharedState.loading&&enableLookup!=null&&publicProductUrl(seed.link,seed.store)!=null&&
                                 (price.isBlank()||name.isBlank()||sharedState.photo==null&&!photoRemoved)){
@@ -123,7 +129,7 @@ import java.util.Locale
                                 }
                             }
                         }
-                        if(linkTouched)Text("Ссылка изменена. Автоматические данные не обновляются.",style=MaterialTheme.typography.bodySmall)
+                        if(sourceChanged)Text("Магазин или ссылка изменены. Проверьте название и цену; фото из прежней карточки не сохранится.",style=MaterialTheme.typography.bodySmall)
                     }
                 }
             }

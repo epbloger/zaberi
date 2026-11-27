@@ -3,6 +3,14 @@ import android.content.Context
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.Response
+import java.io.IOException
 import okhttp3.Dns
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -84,27 +92,46 @@ private fun InputStream.readLimited(max:Int):ByteArray{
     return out.toByteArray()
 }
 private data class PublicResponse(val url:HttpUrl,val bytes:ByteArray)
-private fun publicResponse(start:HttpUrl,store:String,image:Boolean):PublicResponse {
+private data class DownloadStep(val redirect:HttpUrl?=null,val bytes:ByteArray?=null)
+private suspend fun downloadStep(url:HttpUrl,image:Boolean):DownloadStep=suspendCancellableCoroutine{continuation->
+    val request=Request.Builder().url(url).header("Accept",if(image)"image/jpeg,image/png,image/webp" else "text/html,application/xhtml+xml").build()
+    val call=importClient.newCall(request)
+    continuation.invokeOnCancellation{call.cancel()}
+    call.enqueue(object:Callback{
+        override fun onFailure(call:Call,e:IOException){continuation.resumeWith(Result.failure(e))}
+        override fun onResponse(call:Call,response:Response){
+            val result=runCatching{
+                response.use{r->
+                    if(r.isRedirect){
+                        DownloadStep(redirect=r.header("Location")?.let{url.resolve(it)}?:error("Invalid redirect"))
+                    }else{
+                        require(r.isSuccessful)
+                        val body=requireNotNull(r.body)
+                        val type=body.contentType()?:error("No content type")
+                        require(if(image)type.type=="image"&&type.subtype in setOf("jpeg","png","webp") else (type.type=="text"&&type.subtype=="html")||(type.type=="application"&&type.subtype=="xhtml+xml"))
+                        val max=if(image)6*1024*1024 else 2*1024*1024
+                        require(body.contentLength()<=max.toLong())
+                        DownloadStep(bytes=body.byteStream().use{it.readLimited(max)})
+                    }
+                }
+            }
+            continuation.resumeWith(result)
+        }
+    })
+}
+private suspend fun publicResponse(start:HttpUrl,store:String,image:Boolean):PublicResponse {
     var url=start
     repeat(4){
-        val request=Request.Builder().url(url).header("Accept",if(image)"image/jpeg,image/png,image/webp" else "text/html,application/xhtml+xml").build()
-        importClient.newCall(request).execute().use{response->
-            if(response.isRedirect){
-                val next=response.header("Location")?.let{url.resolve(it)}?:error("Invalid redirect")
-                url=(if(image)publicImageUrl(next.toString(),store)else publicProductUrl(next.toString(),store))?:error("Unsupported redirect")
-            }else{
-                require(response.isSuccessful)
-                val body=requireNotNull(response.body)
-                val type=body.contentType()?:error("No content type")
-                require(if(image)type.type=="image"&&type.subtype in setOf("jpeg","png","webp") else (type.type=="text"&&type.subtype=="html")||(type.type=="application"&&type.subtype=="xhtml+xml"))
-                val max=if(image)6*1024*1024 else 2*1024*1024
-                require(body.contentLength()<=max.toLong())
-                return PublicResponse(url,body.byteStream().use{it.readLimited(max)})
-            }
-        }
+        currentCoroutineContext().ensureActive()
+        val step=downloadStep(url,image)
+        val next=step.redirect
+        if(next!=null){
+            url=(if(image)publicImageUrl(next.toString(),store)else publicProductUrl(next.toString(),store))?:error("Unsupported redirect")
+        }else return PublicResponse(url,requireNotNull(step.bytes))
     }
     error("Too many redirects")
 }
+
 private fun JSONObject.string(key:String):String?=opt(key).let{v->when(v){is String->v.trim().takeIf{it.isNotEmpty()};is Number->v.toString();else->null}}
 private fun schemaTypes(value:Any?):List<String> = when(value){
     is String->listOf(value.substringAfterLast('/').substringAfterLast('#'))
@@ -183,11 +210,12 @@ internal object ProductImporter {
     suspend fun lookup(seed:SharedProductSeed,needPhoto:Boolean):ProductLookup=withContext(Dispatchers.IO){
         val url=publicProductUrl(seed.link,seed.store)?:return@withContext ProductLookup(null,null,null,"Для этой ссылки автозагрузка недоступна. Можно заполнить заказ вручную.")
         try{
-            val page=publicResponse(url,seed.store,false)
+            val page=withTimeoutOrNull(11000){publicResponse(url,seed.store,false)}
+                ?:return@withContext ProductLookup(null,null,null,"Магазин не ответил вовремя. Можно продолжить вручную.")
             val metadata=parseProductMetadata(page.bytes.toString(Charsets.UTF_8),page.url,seed.store)
             val photo=if(needPhoto&&metadata.image!=null)try{
                 val image=publicImageUrl(metadata.image,seed.store)?:error("Unsupported image")
-                PrivateFiles.preparePhoto(publicResponse(image,seed.store,true).bytes)
+                withTimeoutOrNull(7000){PrivateFiles.preparePhoto(publicResponse(image,seed.store,true).bytes)}
             }catch(e:CancellationException){throw e}catch(_:Exception){null}else null
             ProductLookup(metadata.title,metadata.price,photo,if((seed.price==null&&metadata.price==null)||(needPhoto&&photo==null))"Не все сведения доступны. Проверьте цену и при необходимости добавьте фото вручную." else null)
         }catch(e:CancellationException){throw e}catch(_:Exception){

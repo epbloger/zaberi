@@ -8,6 +8,8 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.withLock
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.util.UUID
@@ -39,18 +41,28 @@ class Model(app: Application): AndroidViewModel(app) {
             importJob?.cancel();importJob=null;_productImport.value=null
         }
     }
+    internal fun cancelProductImport(id:String){
+        val state=_productImport.value?.takeIf{it.requestId==id&&it.loading}?:return
+        importJob?.cancel();importJob=null
+        _productImport.value=state.copy(loading=false,attempted=true,message="Загрузка остановлена. Можно сохранить заказ без недостающих сведений.")
+    }
+    internal fun restoreProductImport(id:String,text:String){
+        if(_productImport.value!=null)return
+        _productImport.value=ProductImportState(id,sharedProductSeed(text),message="Черновик восстановлен после перезапуска. Несохранённое фото нужно загрузить заново или добавить после сохранения.")
+    }
     internal fun acceptShare(id:String,online:Boolean):SharedProductRequest?{
         val request=_pendingShare.value?.takeIf{it.id==id}?:return null
         if(!_pendingShare.compareAndSet(request,null))return null
         importJob?.cancel()
         val seed=sharedProductSeed(request.text)
-        _productImport.value=ProductImportState(id,seed,loading=request.image!=null)
+        val fetchOnline=online&&publicProductUrl(seed.link,seed.store)!=null
+        _productImport.value=ProductImportState(id,seed,loading=request.image!=null||fetchOnline)
         importJob=viewModelScope.launch{
             val photo=try{ProductImporter.readSharedImage(getApplication(),request)}
                 catch(e:CancellationException){throw e}catch(_:Exception){null}
             val current=_productImport.value?.takeIf{it.requestId==id}?:return@launch
-            _productImport.value=current.copy(photo=photo,loading=false,message=if(request.image!=null&&photo==null)"Не удалось открыть переданное фото. Можно добавить его вручную." else null)
-            if(online)lookupProduct(id)
+            _productImport.value=current.copy(photo=photo,loading=fetchOnline,message=if(request.image!=null&&photo==null)"Не удалось открыть переданное фото. Можно добавить его вручную." else null)
+            if(fetchOnline)lookupProduct(id)
         }
         return request
     }
@@ -63,9 +75,15 @@ class Model(app: Application): AndroidViewModel(app) {
     private suspend fun lookupProduct(id:String){
         val state=_productImport.value?.takeIf{it.requestId==id}?:return
         if(publicProductUrl(state.seed.link,state.seed.store)==null)return
-        if(state.seed.name.isNotBlank()&&state.seed.price!=null&&state.photo!=null)return
+        if(state.seed.name.isNotBlank()&&state.seed.price!=null&&state.photo!=null){
+            _productImport.value=state.copy(loading=false)
+            return
+        }
         _productImport.value=state.copy(loading=true,attempted=true,message=null)
-        val result=lookupProductDetails(state.seed,state.photo==null)
+        val result=try{lookupProductDetails(state.seed,state.photo==null)}
+            catch(e:CancellationException){throw e}
+            catch(_:Exception){ProductLookup(null,null,null,"Не удалось загрузить сведения. Можно продолжить вручную.")}
+        kotlinx.coroutines.currentCoroutineContext().ensureActive()
         val current=_productImport.value?.takeIf{it.requestId==id}?:return
         _productImport.value=current.copy(title=result.title,price=result.price,photo=current.photo?:result.photo,loading=false,message=result.warning)
     }
@@ -95,6 +113,7 @@ class Model(app: Application): AndroidViewModel(app) {
         afterCommit: () -> Unit = {},
         block: suspend () -> Unit
     ) = viewModelScope.launch {
+        reminderMutationMutex.withLock {
         try {
             db.withTransaction { block() }
         } catch (e: CancellationException) {
@@ -102,7 +121,7 @@ class Model(app: Application): AndroidViewModel(app) {
         } catch (e: Exception) {
             completed?.invoke(false)
             reportError(if (e is IllegalArgumentException) e.message ?: "Проверьте введённые данные" else "Не удалось сохранить данные. Попробуйте снова.")
-            return@launch
+            return@withLock
         }
         completed?.invoke(true)
         try {
@@ -112,6 +131,7 @@ class Model(app: Application): AndroidViewModel(app) {
             throw e
         } catch (e: Exception) {
             reportError("Данные сохранены, но не удалось обновить напоминания")
+        }
         }
     }
     private suspend fun log(id: String, label: String) = dao.history(History(uid(),id,LocalDateTime.now().toString(),label))

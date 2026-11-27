@@ -113,6 +113,30 @@ class ShareImportDeviceTest {
         }
     }
 
+    @Test fun cancelledImportCannotOverwriteOrPersistPhoto(){
+        val response=CompletableDeferred<ProductLookup>()
+        compose.activityRule.scenario.onActivity{activity->
+            ViewModelProvider(activity)[Model::class.java].lookupProductDetails={_,_->response.await()}
+        }
+        try{
+            share(Intent(Intent.ACTION_SEND).setType("text/plain")
+                .putExtra(Intent.EXTRA_TEXT,"Чайник\n500 ₽\nhttps://www.ozon.ru/product/cancel-"+System.nanoTime()+"/"))
+            compose.onNodeWithTag("import_lookup").performScrollTo().performClick()
+            compose.onNodeWithTag("save_order").assertIsNotEnabled()
+            compose.onNodeWithTag("cancel_import_lookup").performScrollTo().performClick()
+            compose.onNodeWithTag("save_order").assertIsEnabled()
+            response.complete(ProductLookup("Чужое название",90000L,byteArrayOf(1,2,3)))
+            compose.waitForIdle()
+            compose.onNodeWithTag("order_name").assertTextContains("Чайник")
+            compose.onNodeWithTag("order_price").assertTextContains("500.00")
+            compose.onNodeWithTag("import_photo").assertDoesNotExist()
+            compose.onNodeWithContentDescription("Закрыть").performClick()
+        }finally{
+            response.cancel()
+            compose.activityRule.scenario.onActivity{it.getSharedPreferences("preferences",Context.MODE_PRIVATE).edit().putBoolean("online_product_import_v1",false).commit()}
+        }
+    }
+
     @Test fun tutorialCanBeReopenedAndManualPracticeDoesNotCreateAnOrder(){
         val dao=ZaberiDb.get(compose.activity.applicationContext).orders()
         val before=runBlocking{dao.all().map{it.id}.toSet()}

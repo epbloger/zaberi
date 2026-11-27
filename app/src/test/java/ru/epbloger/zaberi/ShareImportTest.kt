@@ -19,6 +19,11 @@ class ShareImportTest {
         assertNull(sharedProductSeed("Товар\nот 999 ₽\nhttps://www.ozon.ru/product/item-123/").price)
         assertNull(sharedProductSeed("Товар\n999 ₽ — 1299 ₽").price)
         assertNull(sharedProductSeed("Товар\n999 ₽ вместо 1299 ₽").price)
+        assertNull(sharedProductSeed("Товар\n-100 ₽").price)
+        assertNull(sharedProductSeed("Товар\n− 100 ₽").price)
+        assertNull(sharedProductSeed("Товар\n12 34 ₽").price)
+        assertNull(sharedProductSeed("Товар\n1.234,50 ₽").price)
+        assertEquals(123450L,sharedProductSeed("Товар\n1 234,50 ₽").price)
     }
     @Test fun onlyKnownPublicProductRoutesCanBeRequested(){
         assertNotNull(publicProductUrl("https://ozon.ru/t/example","Ozon"))
