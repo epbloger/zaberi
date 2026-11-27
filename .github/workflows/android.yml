@@ -89,8 +89,7 @@ jobs:
             adb shell ime list -s
             adb shell settings get secure default_input_method
             adb shell dumpsys input_method > /tmp/zaberi-ime.txt
-            bash .github/scripts/verify-adaptive-layouts.sh
-            bash .github/scripts/verify-apk-upgrade.sh
+            status=0; bash .github/scripts/verify-adaptive-layouts.sh || status=1; bash .github/scripts/verify-apk-upgrade.sh || status=1; exit "$status"
       - name: Verify supported older Android
         if: ${{ !cancelled() && github.head_ref == 'dev/1.1.0-share' && steps.emulator_prerequisites.outcome == 'success' }}
         uses: reactivecircus/android-emulator-runner@v2

@@ -5,6 +5,8 @@ import android.os.Build
 import android.content.Context
 import android.view.inputmethod.InputMethodManager
 import android.provider.Settings
+import android.os.ParcelFileDescriptor
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.core.view.WindowCompat
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -28,7 +30,34 @@ class AdaptiveLayoutTest {
             compose.onNodeWithContentDescription("Закрыть").performClick()
     }
 
+    private fun shell(command:String):String =
+        ParcelFileDescriptor.AutoCloseInputStream(InstrumentationRegistry.getInstrumentation().uiAutomation
+            .executeShellCommand(command)).bufferedReader().use{it.readText()}
+
+    private fun awaitAppWindowFocus(tag:String){
+        fun focused():Boolean{
+            var result=false
+            compose.runOnUiThread{result=compose.activity.window.decorView.hasWindowFocus()}
+            return result
+        }
+        if(focused())return
+        // Only recover a documented unrelated emulator launcher ANR. Do not
+        // dismiss application errors, suppress ANRs, or substitute fake insets.
+        val before=shell("dumpsys window")
+        if(before.lineSequence().any{it.contains("mCurrentFocus=")&&it.contains("Application Not Responding: com.google.android.apps.nexuslauncher")}){
+            shell("am force-stop com.google.android.apps.nexuslauncher")
+        }
+        try{
+            compose.waitUntil(timeoutMillis=15000){focused()}
+        }catch(e:ComposeTimeoutException){
+            val state=shell("dumpsys window").lineSequence()
+                .filter{it.contains("mCurrentFocus=")||it.contains("mFocusedApp=")}.joinToString("; ")
+            throw AssertionError("App window did not obtain focus: tag=$tag $state",e)
+        }
+    }
+
     private fun enterTextWithKeyboard(tag: String, value: String) {
+        awaitAppWindowFocus(tag)
         val field = compose.onNodeWithTag(tag)
         if (tag != "map_search") field.performScrollTo()
         field.performTouchInput { click() }
@@ -37,6 +66,7 @@ class AdaptiveLayoutTest {
         field.assertTextContains(value)
         // Semantic text input by itself is not proof that the OS has shown the IME.
         // Ask the window/controller explicitly, with a focused editor and real touch input.
+        awaitAppWindowFocus(tag)
         field.performTouchInput { click() }
         compose.runOnUiThread {
             val activity = compose.activity
@@ -68,7 +98,9 @@ class AdaptiveLayoutTest {
                 visible
             }
         } catch (e: ComposeTimeoutException) {
-            throw AssertionError("Real software keyboard did not open: $diagnostic", e)
+            val state=shell("dumpsys window").lineSequence()
+                .filter{it.contains("mCurrentFocus=")||it.contains("mFocusedApp=")}.joinToString("; ")
+            throw AssertionError("Real software keyboard did not open: $diagnostic $state", e)
         }
         compose.waitForIdle()
     }

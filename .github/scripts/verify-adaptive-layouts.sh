@@ -7,6 +7,14 @@ run_suite() {
   profile="$1"
   shift
   mkdir -p "app/build/verification/$profile"
+  # The Android 15 Google APIs image can leave a NexusLauncher ANR dialog
+  # in front of the app. Reset only the unrelated launcher, never ZABERI.
+  adb shell input keyevent KEYCODE_WAKEUP
+  adb shell wm dismiss-keyguard
+  adb shell dumpsys window > "app/build/verification/$profile/window-before.txt"
+  if grep -F 'mCurrentFocus=' "app/build/verification/$profile/window-before.txt" | grep -Fq 'Application Not Responding: com.google.android.apps.nexuslauncher'; then
+    adb shell am force-stop com.google.android.apps.nexuslauncher
+  fi
   gradle --no-daemon --stacktrace connectedDebugAndroidTest "$@" || failed=1
   cp -r app/build/reports/androidTests/connected/. "app/build/verification/$profile/" || true
   adb shell dumpsys input_method > "app/build/verification/$profile/input-method.txt"
