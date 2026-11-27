@@ -11,13 +11,13 @@ private val sharedUrl=Regex("https?://[^\\s<>\"']+",RegexOption.IGNORE_CASE)
 private val rublePrice=Regex("(?<![\\d.,])([+\\-−]?[ \\u00a0\\u202f]*[0-9][0-9., \\u00a0\\u202f]*?)\\s*(?:₽|руб(?:\\.|лей|ля|ль)?(?![\\p{L}])|RUB\\b)",RegexOption.IGNORE_CASE)
 private val validSharedAmount=Regex("(?:[0-9]+|[0-9]{1,3}(?:[ \\u00a0\\u202f][0-9]{3})+)(?:[.,][0-9]{1,2})?")
 private const val MAX_SHARED_TEXT=8192
-private val ordinaryLabel=Regex("(?iu)(?<![\\p{L}\\p{N}])(?:обычная\\s+цена|без\\s+(?:карты(?:\\s+(?:Ozon|Озон|WB|Яндекс\\s+Пэй))?|(?:Яндекс\\s+)?Пэй|(?:WB\\s+)?кошелька|(?:Яндекс\\s+)?Сплита))(?![\\p{L}\\p{N}])")
+private val ordinaryLabel=Regex("(?iu)(?<![\\p{L}\\p{N}])(?:обычная\\s+цена|без\\s+(?:карты(?:\\s+(?:Ozon|Озон|WB|Яндекс\\s+Пэй))?|(?:Яндекс\\s+)?Пэй|(?:WB\\s+)?кошелька)|с\\s+другими\\s+банками)(?![\\p{L}\\p{N}])")
 internal fun ordinaryPriceFromText(text:String):Long?{
     fun amounts(line:String)=rublePrice.findAll(line).mapNotNull{
         val raw=it.groupValues[1].trim()
         raw.takeIf{validSharedAmount.matches(it)}?.let{v->parseMoney(v.replace('\u00a0',' ').replace('\u202f',' '))}
     }.toList()
-    val lines=text.take(32000).lineSequence().map{it.trim()}.filter{it.isNotBlank()}.take(500).toList()
+    val lines=text.take(32000).replace('\u2009',' ').replace('\u2007',' ').lineSequence().map{it.trim()}.filter{it.isNotBlank()}.take(500).toList()
     val found=mutableListOf<Long>()
     for(i in lines.indices){
         val line=lines[i]
@@ -34,7 +34,7 @@ internal fun ordinaryPriceFromText(text:String):Long?{
     return found.distinct().singleOrNull()
 }
 internal fun sharedProductSeed(text:String):SharedProductSeed {
-    val bounded=text.take(MAX_SHARED_TEXT)
+    val bounded=text.take(MAX_SHARED_TEXT).replace('\u2009',' ').replace('\u2007',' ')
     val links=sharedUrl.findAll(bounded).map{it.value.trimEnd('.',',',';',')',']')}.toList()
     val link=links.firstOrNull{candidate->val store=detectStore(candidate);store!=null&&publicProductUrl(candidate,store)!=null}
         ?:links.firstOrNull{detectStore(it)!=null}?:links.firstOrNull().orEmpty()

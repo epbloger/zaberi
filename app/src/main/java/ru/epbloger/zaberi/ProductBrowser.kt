@@ -37,18 +37,32 @@ private val readCardScript="""
   const priceText=[];
   const scope=document.querySelector('main')||document.body;
   if(scope){
+    function visibleUnstruckText(el){
+      if(!el.getClientRects().length)return '';
+      const css=getComputedStyle(el);
+      if(css.visibility==='hidden'||css.display==='none'||css.textDecorationLine.includes('line-through')||el.matches('s,del,strike'))return '';
+      if(el.childElementCount===0)return el.innerText||el.textContent||'';
+      let parts=[];
+      for(const child of el.childNodes){
+        if(child.nodeType===3)parts.push(child.textContent||'');
+        else if(child.nodeType===1)parts.push(visibleUnstruckText(child));
+      }
+      return parts.join(' ').replace(/\s+/g,' ').trim();
+    }
     const nodes=scope.querySelectorAll('span,div,p');
     for(let i=0;i<nodes.length&&i<18000&&priceText.length<24;i++){
       const e=nodes[i];
       if(e.childElementCount>8||!e.getClientRects().length)continue;
       const t=(e.innerText||'').trim();
-      if(t.length>0&&t.length<170&&/(без\s+(карты|пэй|кошелька|яндекс|wb|сплита)|обычная\s+цена)/i.test(t)){
-        let context=t;
-        if(!/₽/.test(t)&&e.parentElement){
-          const p=(e.parentElement.innerText||'').trim();
-          if(p.length<170)context=p;
+      if(t.length>0&&t.length<170&&/(без\s+(карты|пэй|кошелька|яндекс|wb)|обычная\s+цена|с\s+другими\s+банками)/i.test(t)){
+        let context=visibleUnstruckText(e);
+        let p=e.parentElement;
+        for(let level=0;level<2&&!/₽/.test(context)&&p;level++,p=p.parentElement){
+          const raw=(p.innerText||'').trim();
+          if(raw.length>170)break;
+          context=visibleUnstruckText(p);
         }
-        if(!priceText.includes(context))priceText.push(context);
+        if(context.length<170&&/₽/.test(context)&&!priceText.includes(context))priceText.push(context);
       }
     }
   }
