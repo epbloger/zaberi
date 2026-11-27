@@ -79,6 +79,26 @@ class ShareImportDeviceTest {
         assertEquals("https://ir.ozone.ru/s3/first.jpg",parsed.image)
     }
 
+    @Test fun structuredMicrodataSupportsAllEightStoresWithoutGuessing(){
+        val cases=listOf(
+            Triple("Ozon","https://ozon.ru/product/item-123/","https://ir.ozone.ru/s3/first.jpg"),
+            Triple("Wildberries","https://www.wildberries.ru/catalog/123/detail.aspx","https://basket-01.wbbasket.ru/vol0/part0/123/images/big/1.webp"),
+            Triple("Яндекс Маркет","https://market.yandex.ru/card/item/123","https://avatars.mds.yandex.net/get-mpic/123/orig"),
+            Triple("Мегамаркет","https://megamarket.ru/catalog/details/item-123/","https://main-cdn.sbermegamarket.ru/big2/first.jpg"),
+            Triple("Авито","https://www.avito.ru/moskva/telefony/item_123","https://images.avito.st/first.jpg"),
+            Triple("AliExpress","https://aliexpress.ru/item/1005001234567890.html","https://ae-pic-a1.aliexpress-media.com/kf/first.jpg"),
+            Triple("Lamoda","https://www.lamoda.ru/p/mp002xm0abcd/","https://a.lmcdn.ru/product/first.jpg"),
+            Triple("DNS","https://www.dns-shop.ru/product/1234abcd/item/","https://c.dns-shop.ru/thumb/st1/first.jpg"))
+        for((store,link,image) in cases){
+            val html="""<div itemscope itemtype="https://schema.org/Product"><h1 itemprop="name">Товар</h1><img itemprop="image" src="$image"><div itemprop="offers" itemscope itemtype="https://schema.org/Offer"><meta itemprop="price" content="1299.50"><meta itemprop="priceCurrency" content="RUB"></div></div>"""
+            val result=parseProductMetadata(html,link.toHttpUrl(),store)
+            assertEquals(store,"Товар",result.title)
+            assertEquals(store,129950L,result.price)
+            assertEquals(store,image,result.image)
+            assertNull(store,parseProductMetadata(html.replace("RUB","USD"),link.toHttpUrl(),store).price)
+            assertNull(store,parseProductMetadata(html.replace("schema.org/Offer","schema.org/AggregateOffer"),link.toHttpUrl(),store).price)
+        }
+    }
     private fun share(intent:Intent){
         compose.activityRule.scenario.onActivity{activity->
             // ActivityScenario matches lifecycle events against its original launch Intent.

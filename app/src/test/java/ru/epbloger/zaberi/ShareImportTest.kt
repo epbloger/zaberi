@@ -40,6 +40,33 @@ class ShareImportTest {
         assertEquals("https://www.wildberries.ru/catalog/330535596/detail.aspx",seed.link)
         assertEquals("https://www.wildberries.ru/catalog/330535596/detail.aspx",publicProductUrl("https://www.wildberries.ru/catalog/330535596","Wildberries")?.toString())
     }
+    @Test fun everyAdvertisedStoreHasAnImportRouteAndPhotoHost(){
+        val routes=listOf(
+            Triple("Ozon","https://ozon.ru/product/item-123/","https://ir.ozone.ru/s3/first.jpg"),
+            Triple("Wildberries","https://www.wildberries.ru/catalog/123/detail.aspx","https://basket-01.wbbasket.ru/vol0/part0/123/images/big/1.webp"),
+            Triple("Яндекс Маркет","https://market.yandex.ru/card/item/103683837950","https://avatars.mds.yandex.net/get-mpic/123/orig"),
+            Triple("Мегамаркет","https://megamarket.ru/catalog/details/item-123/","https://main-cdn.sbermegamarket.ru/big2/first.jpg"),
+            Triple("Авито","https://www.avito.ru/moskva/telefony/item_123","https://images.avito.st/first.jpg"),
+            Triple("AliExpress","https://sl.aliexpress.ru/p/key/abc","https://ae-pic-a1.aliexpress-media.com/kf/first.jpg"),
+            Triple("Lamoda","https://www.lamoda.ru/p/mp002xm0abcd/","https://a.lmcdn.ru/product/first.jpg"),
+            Triple("DNS","https://www.dns-shop.ru/product/1234abcd/item/","https://c.dns-shop.ru/thumb/st1/first.jpg"))
+        for((store,link,image) in routes){
+            assertEquals(store,sharedProductSeed(link).store)
+            assertNotNull(store,publicProductUrl(link,store))
+            assertNotNull(store,publicImageUrl(image,store))
+            assertNull(store,publicImageUrl("https://evil.test/"+image,store))
+        }
+        assertNotNull(publicProductUrl("https://a.aliexpress.com/_abc","AliExpress"))
+        assertNotNull(publicProductUrl("https://aliexpress.ru/item/1005001234567890.html","AliExpress"))
+        assertEquals("abc",publicProductUrl("https://sl.aliexpress.ru/p?key=abc&token=secret","AliExpress")?.queryParameter("key"))
+        assertNull(publicProductUrl("https://sl.aliexpress.ru/p?token=secret","AliExpress"))
+        val url=publicProductUrl("https://market.yandex.ru/card/item/123?sku=321&do-waremd5=abc_123&token=secret&offerid=xyz","Яндекс Маркет")!!
+        assertEquals("321",url.queryParameter("sku"))
+        assertEquals("abc_123",url.queryParameter("do-waremd5"))
+        assertNull(url.queryParameter("token"))
+        assertNull(publicProductUrl("https://www.dns-shop.ru/personal/orders/","DNS"))
+        assertNull(publicProductUrl("https://sl.aliexpress.ru/account/","AliExpress"))
+    }
     @Test fun onlyKnownPublicProductRoutesCanBeRequested(){
         assertNotNull(publicProductUrl("https://ozon.ru/t/example","Ozon"))
         assertNotNull(publicProductUrl("https://www.wildberries.ru/catalog/123/detail.aspx?foo=secret","Wildberries"))

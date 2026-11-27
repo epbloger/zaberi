@@ -34,36 +34,52 @@ internal data class ProductLookup(val title:String?,val price:Long?,val photo:By
 private val shopDomains=mapOf(
     "Ozon" to listOf("ozon.ru","ozon.com"),"Wildberries" to listOf("wildberries.ru","wb.ru"),
     "Яндекс Маркет" to listOf("market.yandex.ru"),"Авито" to listOf("avito.ru"),
-    "Мегамаркет" to listOf("megamarket.ru"),"AliExpress" to listOf("aliexpress.ru"),"Lamoda" to listOf("lamoda.ru")
+    "Мегамаркет" to listOf("megamarket.ru","sbermegamarket.ru"),"AliExpress" to listOf("aliexpress.ru","aliexpress.com"),"Lamoda" to listOf("lamoda.ru"),"DNS" to listOf("dns-shop.ru")
 )
 private val imageDomains=mapOf(
     "Ozon" to listOf("ozon.ru","ozone.ru","ozonusercontent.com","ozon.com"),
     "Wildberries" to listOf("wildberries.ru","wb.ru","wbstatic.net","wbbasket.ru","wbbasket.com"),
     "Яндекс Маркет" to listOf("market.yandex.ru","yandex.net","yastatic.net"),
     "Авито" to listOf("avito.ru","avito.st"),"Мегамаркет" to listOf("megamarket.ru","sbermegamarket.ru"),
-    "AliExpress" to listOf("aliexpress.ru","alicdn.com","aliexpress-media.com"),"Lamoda" to listOf("lamoda.ru")
+    "AliExpress" to listOf("aliexpress.ru","aliexpress.com","alicdn.com","aliexpress-media.com"),"Lamoda" to listOf("lamoda.ru","lmcdn.ru"),"DNS" to listOf("dns-shop.ru")
 )
 private fun hostMatches(host:String,domains:List<String>)=domains.any{host==it||host.endsWith(".$it")}
 private fun safeHttps(raw:String):HttpUrl?=raw.toHttpUrlOrNull()?.takeIf{it.isHttps&&it.port==443&&it.username.isEmpty()&&it.password.isEmpty()}
-private fun productPath(store:String,path:String):Boolean {
+private fun productPath(store:String,path:String,host:String):Boolean {
     return when(store){
         "Ozon"->path.startsWith("/product/")||path.startsWith("/t/")
         "Wildberries"->wildberriesArticle(path)!=null
-        "Яндекс Маркет"->path.startsWith("/product--")||path.startsWith("/product/")||path.startsWith("/cc/")
+        "Яндекс Маркет"->path.startsWith("/product--")||path.startsWith("/product/")||path.startsWith("/card/")||path.startsWith("/cc/")
         "Авито"->Regex("/.+_\\d+/?").matches(path)&&!path.startsWith("/profile/")
         "Мегамаркет"->path.startsWith("/catalog/details/")
-        "AliExpress"->path.startsWith("/item/")
+        "AliExpress"->Regex("/item/\\d+(?:\\.html)?/?").matches(path)||
+            host=="sl.aliexpress.ru"&&(Regex("/p/key/[A-Za-z0-9_-]{1,128}/?").matches(path)||path=="/p")||
+            host in setOf("a.aliexpress.ru","a.aliexpress.com")&&Regex("/_[A-Za-z0-9]+/?").matches(path)
         "Lamoda"->path.startsWith("/p/")
+        "DNS"->Regex("/product/[0-9a-fA-F-]{8,36}(?:/[^/]+)?/?").matches(path)
         else->false
     }
 }
 internal fun publicProductUrl(raw:String,store:String):HttpUrl? {
     val url=safeHttps(raw)?:return null
-    if(!hostMatches(url.host,shopDomains[store].orEmpty())||!productPath(store,url.encodedPath))return null
+    if(!hostMatches(url.host,shopDomains[store].orEmpty())||!productPath(store,url.encodedPath,url.host))return null
     if(store=="Wildberries")wildberriesArticle(url.encodedPath)?.let{
         return "https://www.wildberries.ru/catalog/$it/detail.aspx".toHttpUrlOrNull()
     }
-    return url.newBuilder().query(null).fragment(null).build()
+    val builder=url.newBuilder().query(null).fragment(null)
+    // Keep only public offer identifiers. Dropping the selected SKU may
+    // silently import a different seller's price.
+    val selected=when(store){
+        "Яндекс Маркет"->setOf("sku","offerid","do-waremd5","businessId","shopId")
+        "AliExpress"->if(url.host=="sl.aliexpress.ru"&&url.encodedPath=="/p")setOf("key")else setOf("sku_id","skuId")
+        else->emptySet()
+    }
+    for(key in selected){
+        val value=url.queryParameterValues(key).singleOrNull()
+        if(value!=null&&Regex("[A-Za-z0-9_-]{1,128}").matches(value))builder.addQueryParameter(key,value)
+    }
+    if(url.host=="sl.aliexpress.ru"&&url.encodedPath=="/p"&&builder.build().queryParameter("key")==null)return null
+    return builder.build()
 }
 internal fun publicImageUrl(raw:String,store:String):HttpUrl? =
     safeHttps(raw)?.takeIf{hostMatches(it.host,imageDomains[store].orEmpty())}?.newBuilder()?.fragment(null)?.build()
@@ -193,7 +209,7 @@ private fun parseSchemaMetadata(html:String,page:HttpUrl,store:String):ProductMe
     val ogType=meta("og:type")
     val canonical=meta("og:url")?.let{publicProductUrl(it,store)}
     val canonicalMatches=canonical!=null&&canonical.host==page.host&&canonical.encodedPath.trimEnd('/')==page.encodedPath.trimEnd('/')
-    val productEvidence=product!=null||ogType.equals("product",true)||ogType.equals("og:product",true)||meta("product:price:amount")!=null||canonicalMatches
+    val productEvidence=product!=null||ogType.equals("product",true)||ogType.equals("og:product",true)||meta("product:price:amount")!=null||meta("og:price:amount")!=null||canonicalMatches
     if(!productEvidence)return ProductMetadata(null,null,null)
     val title=(product?.string("name")?:meta("og:title"))?.let{Jsoup.parse(it).text().trim().take(200)}?.takeIf{
         it.isNotBlank()&&!Regex("captcha|access denied|robot|доступ ограничен|подтвердите, что вы|проверка браузера|страница не найдена",RegexOption.IGNORE_CASE).containsMatchIn(it)
@@ -201,8 +217,9 @@ private fun parseSchemaMetadata(html:String,page:HttpUrl,store:String):ProductMe
     val offerList=offers(product?.opt("offers"))
     val offerPrices=offerList.mapNotNull{offer->if(offer.hasType("Offer"))explicitRuble(offer.string("price"),offer.string("priceCurrency"))else null}
     val schemaPrice=offerPrices.distinct().singleOrNull()?.takeIf{offerList.size==offerPrices.size}
-    val ogAmounts=metas("product:price:amount")
-    val ogPrice=explicitRuble(ogAmounts.singleOrNull(),meta("product:price:currency"))
+    val ogAmounts=(metas("product:price:amount")+metas("og:price:amount")).distinct()
+    val ogCurrencies=(metas("product:price:currency")+metas("og:price:currency")).distinct()
+    val ogPrice=explicitRuble(ogAmounts.singleOrNull(),ogCurrencies.singleOrNull())
     val price=when{
         offerList.isNotEmpty()&&schemaPrice==null->null
         ogAmounts.size>1->null
@@ -298,8 +315,51 @@ private fun rubleText(raw:String?):Long?{
     val match=Regex("^([0-9]+(?: [0-9]{3})*(?:[.,][0-9]{1,2})?)\\s*₽$").matchEntire(value)?:return null
     return parseMoney(match.groupValues[1])
 }
+private fun microdataMetadata(html:String,page:HttpUrl,store:String):ProductMetadata{
+    val doc=Jsoup.parse(html,page.toString())
+    fun value(element:org.jsoup.nodes.Element):String =
+        element.attr("content").ifBlank{element.attr("href")}.ifBlank{element.attr("src")}.ifBlank{element.text()}.trim()
+    fun property(root:org.jsoup.nodes.Element,key:String)=root.select("[itemprop]").filter{key in it.attr("itemprop").split(Regex("\\s+"))}
+    fun scopeType(element:org.jsoup.nodes.Element,type:String)=element.attr("itemtype").split(' ').any{it.substringAfterLast('/').equals(type,true)}
+    val products=doc.select("[itemscope][itemtype]").filter{scopeType(it,"Product")}
+    if(products.size>1)return ProductMetadata(null,null,null)
+    val root=products.singleOrNull()
+    val avitoTitle=if(store=="Авито")doc.select("h1[data-marker=item-view/title-info],h1[itemprop=name]").singleOrNull()?.text()else null
+    val title=(root?.let{property(it,"name").firstOrNull()?.let(::value)}?:avitoTitle)?.take(200)?.takeIf{it.isNotBlank()}
+        ?:return ProductMetadata(null,null,null)
+    if(Regex("captcha|access denied|доступ ограничен|проверка браузера",RegexOption.IGNORE_CASE).containsMatchIn(title))return ProductMetadata(null,null,null)
+    val offerScopes=root?.select("[itemscope][itemtype]")?.filter{scopeType(it,"Offer")}.orEmpty()
+    val aggregate=root?.select("[itemscope][itemtype]")?.any{scopeType(it,"AggregateOffer")}==true
+    val price=if(aggregate)null else if(offerScopes.isNotEmpty()){
+        val amounts=offerScopes.map{offer->
+            val raw=property(offer,"price").map(::value).distinct().singleOrNull()
+            val currency=property(offer,"priceCurrency").map(::value).distinct().singleOrNull()
+            explicitRuble(raw,currency)?:if(currency==null)rubleText(raw)else null
+        }
+        if(amounts.none{it==null})amounts.filterNotNull().distinct().singleOrNull()else null
+    }else if(store=="Авито"){
+        doc.select("[data-marker=item-view/item-price]").singleOrNull()?.let{marker->
+            val raw=property(marker,"price").map(::value).distinct().singleOrNull()
+            val currency=property(marker,"priceCurrency").map(::value).distinct().singleOrNull()
+            explicitRuble(raw,currency)?:if(currency==null)rubleText(marker.text())else null
+        }
+    }else null
+    val rawImage=root?.let{property(it,"image").firstOrNull()?.let(::value)}
+        ?:if(store=="Авито")doc.select("meta[property=og:image]").firstOrNull()?.attr("content")else null
+    val image=rawImage?.let{page.resolve(it)?.toString()}?.let{publicImageUrl(it,store)?.toString()}
+    return ProductMetadata(title,price,image)
+}
+
 internal fun parseProductMetadata(html:String,page:HttpUrl,store:String):ProductMetadata{
-    val base=parseSchemaMetadata(html,page,store)
+    val schema=parseSchemaMetadata(html,page,store)
+    val micro=microdataMetadata(html,page,store)
+    val price=when{
+        schema.price!=null&&micro.price!=null&&schema.price!=micro.price->null
+        schema.price!=null->schema.price
+        schema.title==null->micro.price
+        else->null
+    }
+    val base=ProductMetadata(schema.title?:micro.title,price,schema.image?:micro.image)
     if(store!="Ozon"||!page.encodedPath.startsWith("/product/"))return base
     val doc=Jsoup.parse(html,page.toString())
     val states=doc.select("[id^=state-webPrice-][data-state]").take(8)
