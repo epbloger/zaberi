@@ -11,6 +11,28 @@ private val sharedUrl=Regex("https?://[^\\s<>\"']+",RegexOption.IGNORE_CASE)
 private val rublePrice=Regex("(?<![\\d.,])([+\\-−]?[ \\u00a0\\u202f]*[0-9][0-9., \\u00a0\\u202f]*?)\\s*(?:₽|руб(?:\\.|лей|ля|ль)?(?![\\p{L}])|RUB\\b)",RegexOption.IGNORE_CASE)
 private val validSharedAmount=Regex("(?:[0-9]+|[0-9]{1,3}(?:[ \\u00a0\\u202f][0-9]{3})+)(?:[.,][0-9]{1,2})?")
 private const val MAX_SHARED_TEXT=8192
+private val ordinaryLabel=Regex("(?i)\\b(?:обычная\\s+цена|без\\s+(?:карты(?:\\s+(?:Ozon|Озон|WB|Яндекс\\s+Пэй))?|(?:Яндекс\\s+)?Пэй|(?:WB\\s+)?кошелька))\\b")
+internal fun ordinaryPriceFromText(text:String):Long?{
+    fun amounts(line:String)=rublePrice.findAll(line).mapNotNull{
+        val raw=it.groupValues[1].trim()
+        raw.takeIf{validSharedAmount.matches(it)}?.let{v->parseMoney(v.replace('\u00a0',' ').replace('\u202f',' '))}
+    }.toList()
+    val lines=text.take(32000).lineSequence().map{it.trim()}.filter{it.isNotBlank()}.take(500).toList()
+    val found=mutableListOf<Long>()
+    for(i in lines.indices){
+        val line=lines[i]
+        if(!ordinaryLabel.containsMatchIn(line))continue
+        if(Regex("(?i)(?:от|до)\\s+\\d|\\d\\s*[-–—]\\s*\\d").containsMatchIn(line))continue
+        val own=amounts(line)
+        if(own.size==1){found.add(own.single());continue}
+        if(own.isNotEmpty())continue
+        val nearby=listOfNotNull(lines.getOrNull(i-1),lines.getOrNull(i+1))
+            .filter{Regex("^\\s*[0-9][0-9 .,\\u00a0\\u202f]*\\s*(?:₽|руб\\.?|RUB)\\s*$",RegexOption.IGNORE_CASE).matches(it)}
+            .flatMap{amounts(it)}.distinct()
+        if(nearby.size==1)found.add(nearby.single())
+    }
+    return found.distinct().singleOrNull()
+}
 internal fun sharedProductSeed(text:String):SharedProductSeed {
     val bounded=text.take(MAX_SHARED_TEXT)
     val links=sharedUrl.findAll(bounded).map{it.value.trimEnd('.',',',';',')',']')}.toList()
@@ -24,7 +46,7 @@ internal fun sharedProductSeed(text:String):SharedProductSeed {
     val title=clean.lineSequence().map{rublePrice.replace(it,"").trim(' ',':','-','–','—','\t')}
         .firstOrNull{it.isNotBlank()&&it.any(Char::isLetter)&&!it.matches(Regex("(?i)(цена|стоимость|поделиться|ссылка|посмотри(?:те)?(?: товар)?|смотри(?:те)?(?: товар)?|товар|купить)[!:. ]*"))}
         ?.take(120).orEmpty()
-    return SharedProductSeed(title,detectStore(link).orEmpty(),link,if(ambiguous)null else price)
+    return SharedProductSeed(title,detectStore(link).orEmpty(),link,ordinaryPriceFromText(clean)?:if(ambiguous)null else price)
 }
 internal fun combinedSharedText(text:String,subject:String):String {
     val bounded=text.take(MAX_SHARED_TEXT)

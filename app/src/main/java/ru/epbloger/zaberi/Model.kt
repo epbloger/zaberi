@@ -72,6 +72,11 @@ class Model(app: Application): AndroidViewModel(app) {
         importJob?.cancel()
         importJob=viewModelScope.launch{lookupProduct(id)}
     }
+    internal fun applyRenderedProduct(id:String,result:ProductLookup){
+        val current=_productImport.value?.takeIf{it.requestId==id&&!it.loading}?:return
+        _productImport.value=current.copy(title=result.title?:current.title,price=result.price?:current.price,
+            photo=current.photo?:result.photo,attempted=true,message=result.warning)
+    }
     private suspend fun lookupProduct(id:String){
         val state=_productImport.value?.takeIf{it.requestId==id}?:return
         if(publicProductUrl(state.seed.link,state.seed.store)==null)return

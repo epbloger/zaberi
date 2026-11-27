@@ -51,7 +51,7 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable internal fun OrderForm(old:Order?,imported:String,catalog:List<CatalogEntry>,orders:List<Order>,saving:Boolean,close:()->Unit,
-    sharedState:ProductImportState?=null,enableLookup:(()->Unit)?=null,cancelLookup:(()->Unit)?=null,practice:Boolean=false,save:(Order,ByteArray?)->Unit){
+    sharedState:ProductImportState?=null,enableLookup:(()->Unit)?=null,cancelLookup:(()->Unit)?=null,renderedLookup:((ProductLookup)->Unit)?=null,practice:Boolean=false,save:(Order,ByteArray?)->Unit){
     val seed=remember(imported){sharedProductSeed(imported)}
     val draftId=rememberSaveable{old?.id?:uid()}
     val draftCreated=rememberSaveable{old?.created?:today()}
@@ -73,6 +73,7 @@ import java.util.Locale
     var category by rememberSaveable{mutableStateOf(old?.category.orEmpty())}
     var advanced by rememberSaveable{mutableStateOf(old!=null||imported.isNotBlank())}
     var duplicateConfirmed by rememberSaveable{mutableStateOf(false)}
+    var showProductBrowser by remember{mutableStateOf(false)}
     val sourceChanged=linkTouched||(seed.store.isNotBlank()&&store!=seed.store)
     val importLoading=sharedState?.loading==true&&!sourceChanged
     LaunchedEffect(sourceChanged,sharedState?.loading){
@@ -92,6 +93,12 @@ import java.util.Locale
     val valid=name.isNotBlank()&&name.length<=200&&store.isNotBlank()&&store.length<=200&&category.length<=200&&point.length<=200&&validPoint(pointLat,pointLon)&&link.length<=8192&&note.length<=10000&&(!duplicate||duplicateConfirmed)&&(price.isBlank()||parsed!=null)&&(!paid||parsed!=null)&&validDate(deadline)&&(old==null||parsed==null||parsed>=old.paid)
     val focus=LocalFocusManager.current
     val keyboard=LocalSoftwareKeyboardController.current
+    if(showProductBrowser&&renderedLookup!=null&&!sourceChanged&&sharedState!=null){
+        ProductBrowserDialog(seed,sharedState.photo==null&&!photoRemoved,{showProductBrowser=false}){result->
+            showProductBrowser=false
+            renderedLookup(result)
+        }
+    }
     AdaptiveActionScreen(title=if(old==null)"Новый заказ" else "Редактировать",close=close,action={
         Button(colors=actionButtonColors(ActionTone.DELIVERY),enabled=valid&&!saving&&!importLoading,onClick={
                 val d=if(state.deadlineLabel!=null)deadline.trim().takeIf{it.isNotEmpty()}else null
@@ -130,6 +137,12 @@ import java.util.Locale
                                 Text("Можно дополнить заказ из открытой карточки. Магазин и сервис изображений получат сетевой запрос. Без входа в аккаунт.",style=MaterialTheme.typography.bodySmall)
                                 OutlinedButton(onClick=enableLookup,enabled=!saving,modifier=Modifier.fillMaxWidth().testTag("import_lookup")){
                                     Text(if(sharedState.attempted)"Повторить загрузку" else "Загрузить цену и фото")
+                                }
+                                if(sharedState.attempted&&renderedLookup!=null){
+                                    Button(onClick={showProductBrowser=true},enabled=!saving,
+                                        modifier=Modifier.fillMaxWidth().testTag("open_product_browser")){
+                                        Text("Открыть карточку и перенести данные")
+                                    }
                                 }
                             }
                         }

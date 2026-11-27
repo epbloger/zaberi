@@ -78,7 +78,7 @@ import java.util.Locale
                     Text("Автоматически дополнять карточки",Modifier.weight(1f))
                     Switch(preferences.onlineProductImport,{preferences.onlineProductImport(it)})
                 }
-                Text("Если магазин не отдаёт сведения, заполните их вручную. Без интернета импорт переданного текста и ручной учёт работают по-прежнему.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Если автоматический запрос не удался, можно открыть публичную карточку во встроенном браузере и перенести доступные данные. Входить в аккаунт не нужно. Без интернета ручной учёт работает по-прежнему.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
             "Уведомления"->{
         Row(verticalAlignment=Alignment.CenterVertically){Text("Напоминания о сроках",Modifier.weight(1f));Switch(preferences.enabled,{preferences.enabled(it)})}

@@ -115,12 +115,15 @@ private fun InputStream.readLimited(max:Int):ByteArray{
 private data class PublicResponse(val url:HttpUrl,val bytes:ByteArray)
 private data class DownloadStep(val redirect:HttpUrl?=null,val bytes:ByteArray?=null)
 private suspend fun downloadStep(url:HttpUrl,image:Boolean,json:Boolean=false):DownloadStep=suspendCancellableCoroutine{continuation->
-    val request=Request.Builder().url(url)
+    val requestBuilder=Request.Builder().url(url)
         .header("Accept",when{image->"image/jpeg,image/png,image/webp";json->"application/json";else->"text/html,application/xhtml+xml"})
         .header("Accept-Language","ru-RU,ru;q=0.9")
         .header("User-Agent","Zaberi/1.1 (Android; product import)")
-        .build()
-    val call=importClient.newCall(request)
+    if(url.host=="card.wb.ru"){
+        requestBuilder.header("Origin","https://www.wildberries.ru")
+            .header("Referer","https://www.wildberries.ru/")
+    }
+    val call=importClient.newCall(requestBuilder.build())
     continuation.invokeOnCancellation{call.cancel()}
     call.enqueue(object:Callback{
         override fun onFailure(call:Call,e:IOException){continuation.resumeWith(Result.failure(e))}
@@ -242,17 +245,19 @@ internal fun parseWildberriesDetails(json:String,article:Long):ProductMetadata {
         .filter{it.optLong("id",-1)==article}.singleOrNull()?:return ProductMetadata(null,null,null)
     val sizes=product.optJSONArray("sizes")
     val prices=mutableListOf<Long>()
-    var unknown=false
     if(sizes!=null&&sizes.length()<=200)for(i in 0 until sizes.length()){
         val size=sizes.optJSONObject(i)?:continue
         val stocks=size.optJSONArray("stocks")
-        val available=if(stocks!=null)(0 until minOf(stocks.length(),1000)).any{(stocks.optJSONObject(it)?.optLong("qty",0)?:0)>0}
-            else product.optLong("totalQuantity",0)>0
-        if(!available)continue
+        val explicitEmpty=stocks!=null&&stocks.length()>0&&
+            (0 until minOf(stocks.length(),1000)).all{stocks.optJSONObject(it)?.optLong("qty",-1)==0L}
+        if(explicitEmpty)continue
         val amount=size.optJSONObject("price")?.opt("product")?.toString()?.toLongOrNull()
-        if(amount!=null&&amount in 1..MAX_ORDER_AMOUNT)prices.add(amount)else unknown=true
+        if(amount!=null&&amount in 1..MAX_ORDER_AMOUNT)prices.add(amount)
     }
-    return ProductMetadata(product.string("name")?.take(200),if(!unknown)prices.distinct().singleOrNull()else null,null)
+    val legacy=product.opt("salePriceU")?.toString()?.toLongOrNull()?.takeIf{it in 1..MAX_ORDER_AMOUNT}
+    val price=if(product.has("totalQuantity")&&product.optLong("totalQuantity",-1)==0L)null
+        else prices.minOrNull()?:legacy
+    return ProductMetadata(product.string("name")?.take(200),price,null)
 }
 internal fun wildberriesBasketHost(json:String,article:Long):String?{
     val routes=JSONObject(json).optJSONObject("origin")?.optJSONArray("mediabasket_route_map")?:return null
@@ -306,7 +311,7 @@ private suspend fun lookupWildberries(article:Long,needPhoto:Boolean):ProductLoo
     }
     val d=details.await()
     val (title,photo)=media.await()
-    val message=if(d?.price!=null)"Цена открытой карточки для Москвы. Проверьте свою цену с учётом региона, размера и скидок."
+    val message=if(d?.price!=null)"Обычная цена открытой карточки для Москвы (минимальная среди доступных вариантов). Проверьте размер, регион и скидки."
         else "Магазин не предоставил однозначную цену."
     ProductLookup(d?.title?:title,d?.price,photo,message+(if(needPhoto&&photo==null)" Главное фото недоступно." else ""))
 }
@@ -365,7 +370,7 @@ internal fun parseProductMetadata(html:String,page:HttpUrl,store:String):Product
     val states=doc.select("[id^=state-webPrice-][data-state]").take(8)
     val gallery=doc.select("[data-widget=webGallery]").firstOrNull()
     if(states.isEmpty()&&gallery==null)return base
-    val prices=states.mapNotNull{element->runCatching{rubleText(JSONObject(element.attr("data-state")).string("price"))}.getOrNull()}
+    val prices=states.mapNotNull{element->runCatching{val state=JSONObject(element.attr("data-state"));rubleText(state.string("priceWithoutCard"))?:rubleText(state.string("price"))}.getOrNull()}
     val ozonPrice=prices.distinct().singleOrNull()?.takeIf{prices.size==states.size}
     val title=doc.select("[data-widget=webProductHeading] h1").firstOrNull()?.text()?.trim()?.take(200)?.takeIf{it.isNotBlank()}
     val image=gallery?.select("img")?.asSequence()?.mapNotNull{img->
@@ -375,7 +380,31 @@ internal fun parseProductMetadata(html:String,page:HttpUrl,store:String):Product
     return ProductMetadata(title?:base.title,if(states.isNotEmpty())ozonPrice else base.price,base.image?:image)
 }
 
+internal fun isShortProductUrl(url:HttpUrl,store:String):Boolean=when(store){
+    "Ozon"->url.encodedPath.startsWith("/t/")
+    "Яндекс Маркет"->url.encodedPath.startsWith("/cc/")
+    "AliExpress"->url.host in setOf("sl.aliexpress.ru","a.aliexpress.ru","a.aliexpress.com")
+    else->false
+}
+internal fun parseRenderedProduct(html:String,visiblePriceText:String,page:HttpUrl,store:String):ProductMetadata{
+    if(publicProductUrl(page.toString(),store)==null||isShortProductUrl(page,store))return ProductMetadata(null,null,null)
+    val base=parseProductMetadata(html,page,store)
+    val doc=Jsoup.parse(html,page.toString())
+    val heading=doc.select("h1").firstOrNull()?.text()?.trim()?.take(200)?.takeIf{
+        it.isNotBlank()&&!Regex("captcha|access denied|robot|доступ ограничен|проверка браузера|страница не найдена|подтвердите|ошибка",RegexOption.IGNORE_CASE).containsMatchIn(it)
+    }
+    val title=base.title?:heading?:return ProductMetadata(null,null,null)
+    val rawImage=doc.select("meta[property=og:image:secure_url],meta[property=og:image]").firstOrNull()?.attr("content")
+    val image=base.image?:rawImage?.let{page.resolve(it)?.toString()}?.let{publicImageUrl(it,store)?.toString()}
+    return ProductMetadata(title,ordinaryPriceFromText(visiblePriceText)?:base.price,image)
+}
 internal object ProductImporter {
+    suspend fun fromRenderedPage(html:String,priceText:String,page:HttpUrl,store:String,needPhoto:Boolean):ProductLookup=withContext(Dispatchers.IO){
+        val metadata=parseRenderedProduct(html,priceText,page,store)
+        val photo=if(needPhoto)downloadProductPhoto(metadata.image,store)else null
+        val warning=if(metadata.price==null||(needPhoto&&photo==null))"Карточка открыта, но магазин не отдал все данные. Проверьте поля." else "Данные получены из открытой карточки. Проверьте цену."
+        ProductLookup(metadata.title,metadata.price,photo,warning)
+    }
     suspend fun readSharedImage(context:Context,request:SharedProductRequest):ByteArray?=withContext(Dispatchers.IO){
         val uri=request.image?:return@withContext null
         require(uri.scheme=="content")

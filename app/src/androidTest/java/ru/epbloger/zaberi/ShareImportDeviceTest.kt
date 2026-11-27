@@ -99,6 +99,17 @@ class ShareImportDeviceTest {
             assertNull(store,parseProductMetadata(html.replace("schema.org/Offer","schema.org/AggregateOffer"),link.toHttpUrl(),store).price)
         }
     }
+    @Test fun renderedCardPrefersExplicitRegularPriceAndKeepsMainPhoto(){
+        val page="https://market.yandex.ru/card/item/123".toHttpUrl()
+        val html="""<h1>Чайник</h1><meta property="og:image" content="https://avatars.mds.yandex.net/get-mpic/123/orig">"""
+        val result=parseRenderedProduct(html,"999 ₽ с картой\n1 299 ₽ без карты",page,"Яндекс Маркет")
+        assertEquals("Чайник",result.title)
+        assertEquals(129900L,result.price)
+        assertEquals("https://avatars.mds.yandex.net/get-mpic/123/orig",result.image)
+        assertNull(parseRenderedProduct("<h1>Подтвердите, что вы не робот</h1>","1 299 ₽ без карты",page,"Яндекс Маркет").price)
+        val json="""{"products":[{"id":123,"name":"Чайник","totalQuantity":4,"sizes":[{"price":{"product":129950,"basic":200000}},{"price":{"product":139950,"basic":200000}}]}]}"""
+        assertEquals(129950L,parseWildberriesDetails(json,123L).price)
+    }
     private fun share(intent:Intent){
         compose.activityRule.scenario.onActivity{activity->
             // ActivityScenario matches lifecycle events against its original launch Intent.

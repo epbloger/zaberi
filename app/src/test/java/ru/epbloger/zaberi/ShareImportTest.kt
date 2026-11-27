@@ -25,6 +25,14 @@ class ShareImportTest {
         assertNull(sharedProductSeed("Товар\n1.234,50 ₽").price)
         assertEquals(123450L,sharedProductSeed("Товар\n1 234,50 ₽").price)
     }
+    @Test fun explicitlyLabeledRegularPriceWinsOverCardPrice(){
+        val url="https://www.ozon.ru/product/item-123/"
+        assertEquals(129900L,sharedProductSeed("Чайник\n999 ₽ с картой\n1 299 ₽ без карты\n2 000 ₽ старая цена\n"+url).price)
+        assertEquals(129900L,ordinaryPriceFromText("Обычная цена: 1 299 ₽"))
+        assertEquals(129900L,ordinaryPriceFromText("Без карты Яндекс Пэй\n1 299 ₽"))
+        assertNull(ordinaryPriceFromText("999 ₽ с картой\n2 000 ₽ старая цена"))
+        assertNull(ordinaryPriceFromText("без карты от 100 ₽"))
+    }
     @Test fun incomingTextAndSubjectAreBoundedBeforeParsing(){
         val url="https://www.ozon.ru/product/item-123/"
         assertEquals("Чайник\n"+url,combinedSharedText(url,"Чайник"))
