@@ -10,8 +10,8 @@ test -f "$old"; test -f "$current"; test -f "$test_apk"
 # Only the disposable CI emulator is reset.
 adb uninstall "$app.test" || true
 adb uninstall "$app" || true
-adb install "$old"
-adb install "$test_apk"
+adb install -t "$old"
+adb install -t "$test_apk"
 run_phase() {
     local phase="$1"
     adb shell am instrument -w -e class ru.epbloger.zaberi.PublishedApkUpgradeTest -e upgradePhase "$phase" "$app.test/androidx.test.runner.AndroidJUnitRunner" | tee "$reports/$phase.txt"
@@ -20,5 +20,5 @@ run_phase() {
 }
 run_phase seed
 adb shell am force-stop "$app"
-adb install -r "$current"
+adb install -r -t "$current"
 run_phase verify
