@@ -35,6 +35,7 @@ data class CatalogEntry(@PrimaryKey val id:String,val kind:String,val parent:Str
     @Query("SELECT * FROM transactions") suspend fun allTransactions():List<Transaction>
     @Query("SELECT * FROM history") suspend fun allHistory():List<History>
     @Query("SELECT * FROM attachments WHERE orderId=:id") fun photos(id:String):Flow<List<Attachment>>
+    @Query("SELECT * FROM attachments WHERE orderId=:id ORDER BY rowid LIMIT 1") fun cover(id:String):Flow<Attachment?>
     @Query("SELECT * FROM attachments") suspend fun allPhotos():List<Attachment>
     @Query("SELECT COALESCE(SUM(length(jpeg)),0) FROM attachments") suspend fun photoBytes():Long
     @Query("SELECT COUNT(*) FROM attachments WHERE orderId=:id") suspend fun photoCount(id:String):Int

@@ -64,8 +64,8 @@ private fun readOrder(j:JSONObject):Order {
     return o
 }
 object PrivateFiles{
-    suspend fun addPhoto(context:Context,id:String,uri:Uri)=withContext(Dispatchers.IO){
-        val raw=context.contentResolver.openInputStream(uri)?.use{it.bounded(20*1024*1024)}?:error("Не удалось открыть изображение")
+    internal fun preparePhoto(raw:ByteArray):ByteArray {
+        require(raw.isNotEmpty()&&raw.size<=20*1024*1024){"Изображение слишком большое"}
         val bounds=BitmapFactory.Options().apply{inJustDecodeBounds=true};BitmapFactory.decodeByteArray(raw,0,raw.size,bounds)
         require(bounds.outWidth>0&&bounds.outHeight>0){"Неподдерживаемое изображение"}
         var sample=1
@@ -73,7 +73,7 @@ object PrivateFiles{
         val decoded=BitmapFactory.decodeByteArray(raw,0,raw.size,BitmapFactory.Options().apply{inSampleSize=sample})?:error("Не удалось открыть изображение")
         val bitmap=try{orientPhoto(decoded,raw)}catch(e:Exception){decoded.recycle();throw e}
         if(bitmap!==decoded)decoded.recycle()
-        val bytes=try{
+        return try{
             var result=ByteArray(0)
             for(quality in listOf(82,65,45,25)){
                 val out=ByteArrayOutputStream();check(bitmap.compress(Bitmap.CompressFormat.JPEG,quality,out));result=out.toByteArray()
@@ -81,8 +81,21 @@ object PrivateFiles{
             }
             require(result.size<=MAX_PHOTO){"Изображение слишком большое"};result
         }finally{bitmap.recycle()}
+    }
+    // The caller owns the Room transaction; imported photos are committed
+    // atomically with the new order, without a separate schema or file store.
+    internal suspend fun attachPreparedPhoto(dao:OrdersDao,id:String,bytes:ByteArray){
+        require(bytes.size in 1..MAX_PHOTO){"Изображение слишком большое"}
+        require(dao.get(id)!=null){"Заказ не найден"}
+        require(dao.photoCount(id)<5){"Не более пяти фото на заказ"}
+        require(dao.photoBytes()+bytes.size<=20L*1024*1024){"Достигнут общий лимит фотографий (20 МБ). Уберите фото и повторите сохранение."}
+        dao.photo(Attachment(uid(),id,bytes))
+    }
+    suspend fun addPhoto(context:Context,id:String,uri:Uri)=withContext(Dispatchers.IO){
+        val raw=context.contentResolver.openInputStream(uri)?.use{it.bounded(20*1024*1024)}?:error("Не удалось открыть изображение")
+        val bytes=preparePhoto(raw)
         val db=ZaberiDb.get(context)
-        db.withTransaction{val dao=db.orders();require(dao.get(id)!=null);require(dao.photoCount(id)<5){"Не более пяти фото на заказ"};require(dao.photoBytes()+bytes.size<=20L*1024*1024){"Достигнут общий лимит фотографий (20 МБ)"};dao.photo(Attachment(uid(),id,bytes))}
+        db.withTransaction{attachPreparedPhoto(db.orders(),id,bytes)}
     }
     suspend fun export(context:Context,uri:Uri,password:String)=withContext(Dispatchers.IO){
         val db=ZaberiDb.get(context);val d=db.orders()

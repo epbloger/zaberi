@@ -20,6 +20,12 @@ class Preferences(private val context:Context) {
         private set
     var overdue by mutableStateOf(prefs.getBoolean("overdue",true))
         private set
+    var tutorialSeen by mutableStateOf(prefs.getBoolean("tutorial_seen_v1",false))
+        private set
+    fun finishTutorial(){tutorialSeen=true;prefs.edit().putBoolean("tutorial_seen_v1",true).apply()}
+    var onlineProductImport by mutableStateOf(prefs.getBoolean("online_product_import_v1",false))
+        private set
+    fun onlineProductImport(value:Boolean){onlineProductImport=value;prefs.edit().putBoolean("online_product_import_v1",value).apply()}
     val notificationAsked get()=prefs.getBoolean("notificationAsked",false)
     fun markNotificationAsked(){prefs.edit().putBoolean("notificationAsked",true).apply()}
     // Age declaration and consent are independent, local and versioned.

@@ -23,6 +23,11 @@ class AdaptiveLayoutTest {
     @get:Rule(order=0) val permission=GrantPermissionRule.grant(*(if(Build.VERSION.SDK_INT>=33) arrayOf(Manifest.permission.POST_NOTIFICATIONS) else emptyArray<String>()))
     @get:Rule(order=1) val compose=createAndroidComposeRule<MainActivity>()
 
+    @org.junit.Before fun dismissInitialGuide(){
+        if(compose.onAllNodesWithTag("tutorial_panel").fetchSemanticsNodes().isNotEmpty())
+            compose.onNodeWithContentDescription("Закрыть").performClick()
+    }
+
     private fun enterTextWithKeyboard(tag: String, value: String) {
         val field = compose.onNodeWithTag(tag)
         if (tag != "map_search") field.performScrollTo()

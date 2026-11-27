@@ -27,6 +27,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -49,7 +50,7 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-@Composable internal fun Orders(orders:List<Order>,open:(Order)->Unit,received:(Order)->Unit,searchVisible:Boolean,addOrder:()->Unit,personalizedAds:Boolean,adsReady:Boolean){
+@Composable internal fun Orders(orders:List<Order>,open:(Order)->Unit,received:(Order)->Unit,searchVisible:Boolean,addOrder:()->Unit,personalizedAds:Boolean,adsReady:Boolean,coverProvider:((String)->kotlinx.coroutines.flow.Flow<Attachment?>)?=null){
     var filter by rememberSaveable{mutableStateOf("Активные")}
     var query by rememberSaveable{mutableStateOf("")}
     var shop by rememberSaveable{mutableStateOf("")}
@@ -75,15 +76,20 @@ import java.util.Locale
         if(grouped){
             visible.groupBy{if(it.point.isBlank())"Пункт не указан" else it.store+" · "+it.point}.forEach{(title,group)->
                 item(key="group:"+title){Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(UiSpacing.Tight)){Text(title,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold);Text("Можно забрать: "+group.count{it.state==Status.READY},style=MaterialTheme.typography.bodySmall)}}
-                items(group,key={it.id}){o->OrderCard(o,if(o.state==Status.READY){{confirmId=o.id}}else null){open(o)}}
+                items(group,key={it.id}){o->OrderCardWithCover(o,if(o.state==Status.READY){{confirmId=o.id}}else null,coverProvider){open(o)}}
             }
-        }else items(visible,key={it.id}){o->OrderCard(o,if(o.state==Status.READY){{confirmId=o.id}}else null){open(o)}}
+        }else items(visible,key={it.id}){o->OrderCardWithCover(o,if(o.state==Status.READY){{confirmId=o.id}}else null,coverProvider){open(o)}}
 
     }
     val pending=orders.firstOrNull{it.id==confirmId}
     if(pending!=null)AlertDialog(onDismissRequest={confirmId=null},title={Text("Заказ получен?")},text={Text(pending.name)},confirmButton={Button(colors=actionButtonColors(ActionTone.DELIVERY),onClick={received(pending);confirmId=null}){Text("Забрал")}},dismissButton={TextButton(onClick={confirmId=null}){Text("Отмена")}})
 }
-@Composable internal fun OrderCard(o:Order,quick:(()->Unit)?=null,open:()->Unit){
+@Composable private fun OrderCardWithCover(o:Order,quick:(()->Unit)?,provider:((String)->kotlinx.coroutines.flow.Flow<Attachment?>)?,open:()->Unit){
+    val flow=remember(o.id,provider){provider?.invoke(o.id)}
+    val cover=if(flow!=null)flow.collectAsStateWithLifecycle(initialValue=null).value else null
+    OrderCard(o,quick,cover,open)
+}
+@Composable internal fun OrderCard(o:Order,quick:(()->Unit)?=null,cover:Attachment?=null,open:()->Unit){
     val date=o.deadline?.let{LocalDate.parse(it)}
     val days=date?.let{java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(),it)}
     val overdue=isOverdue(o.state,date,LocalDate.now())
@@ -92,7 +98,8 @@ import java.util.Locale
     OutlinedCard(onClick=open,modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(UiSpacing.CardRadius),colors=CardDefaults.outlinedCardColors(containerColor=MaterialTheme.colorScheme.surface),border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant)){
         Column(Modifier.padding(UiSpacing.Card),verticalArrangement=Arrangement.spacedBy(UiSpacing.Block)){
             Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(UiSpacing.Block)){
-                StoreTile(o.store)
+                val coverBitmap=remember(cover?.id){cover?.jpeg?.let{android.graphics.BitmapFactory.decodeByteArray(it,0,it.size,android.graphics.BitmapFactory.Options().apply{inSampleSize=4})?.asImageBitmap()}}
+                if(coverBitmap==null)StoreTile(o.store)else Image(coverBitmap,"Фото товара",Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)),contentScale=androidx.compose.ui.layout.ContentScale.Crop)
                 Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(UiSpacing.Tight)){
                     Text(o.store,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(o.name,fontWeight=FontWeight.SemiBold,style=MaterialTheme.typography.titleMedium,maxLines=2,overflow=TextOverflow.Ellipsis)
