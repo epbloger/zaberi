@@ -51,7 +51,7 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable internal fun OrderForm(old:Order?,imported:String,catalog:List<CatalogEntry>,orders:List<Order>,saving:Boolean,close:()->Unit,
-    sharedState:ProductImportState?=null,enableLookup:(()->Unit)?=null,cancelLookup:(()->Unit)?=null,save:(Order,ByteArray?)->Unit){
+    sharedState:ProductImportState?=null,enableLookup:(()->Unit)?=null,cancelLookup:(()->Unit)?=null,practice:Boolean=false,save:(Order,ByteArray?)->Unit){
     val seed=remember(imported){sharedProductSeed(imported)}
     val draftId=rememberSaveable{old?.id?:uid()}
     val draftCreated=rememberSaveable{old?.created?:today()}
@@ -97,9 +97,13 @@ import java.util.Locale
                 val d=if(state.deadlineLabel!=null)deadline.trim().takeIf{it.isNotEmpty()}else null
                 val o=old?.copy(name=name.trim(),store=store.trim(),price=parsed,deadline=d,point=point.trim(),link=link.trim(),note=note.trim(),category=category.trim(),pointLat=pointLat,pointLon=pointLon)?:Order(draftId,name.trim(),store.trim(),parsed,if(paid)parsed?:0 else 0,status,d,point.trim(),link.trim(),note.trim(),draftCreated,category=category.trim(),pointLat=pointLat,pointLon=pointLon)
                 focus.clearFocus();keyboard?.hide();save(o,importedPhoto)
-            },modifier=Modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch).testTag("save_order")){Text(if(saving)"Сохраняем…" else if(old==null)"Добавить заказ" else "Сохранить",maxLines=2)}
+            },modifier=Modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch).testTag("save_order")){Text(if(saving)"Сохраняем…" else if(practice)"Завершить тренировку" else if(old==null)"Добавить заказ" else "Сохранить",maxLines=2)}
     }){
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal=LocalActionPagePadding.current,vertical=LocalActionPagePadding.current),verticalArrangement=Arrangement.spacedBy(UiSpacing.Block)){
+            if(practice){
+                Text("Тренировка. Заполните поля и завершите упражнение — настоящий заказ не будет создан.",
+                    style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.primary)
+            }
             if(sharedState!=null){
                 OutlinedCard(Modifier.fillMaxWidth().testTag("shared_import_panel"),shape=RoundedCornerShape(UiSpacing.CardRadius)){
                     Column(Modifier.padding(UiSpacing.Card),verticalArrangement=Arrangement.spacedBy(UiSpacing.Related)){

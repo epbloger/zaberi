@@ -163,7 +163,9 @@ class MainActivity:ComponentActivity(){
                 val state=productImport?.takeIf{add&&it.requestId==shareId}
                 OrderForm(if(add)null else order,if(add)imported else "",catalog,orders,saving,{if(!saving){add=false;editing=false}},
                     sharedState=state,enableLookup=state?.let{current->{preferences.onlineProductImport(true);vm.enrichSharedProduct(current.requestId)}},
-                    cancelLookup=state?.let{current->{vm.cancelProductImport(current.requestId)}}){o,photo->vm.saveForm(o,!add,photo)}
+                    cancelLookup=state?.let{current->{vm.cancelProductImport(current.requestId)}},practice=guidePractice){o,photo->
+                    if(guidePractice){add=false;editing=false}else vm.saveForm(o,!add,photo)
+                }
             }
             SnackbarHost(snack,Modifier.align(Alignment.TopCenter))
         }

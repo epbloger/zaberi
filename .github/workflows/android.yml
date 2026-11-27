@@ -54,6 +54,19 @@ jobs:
         run: bash .github/scripts/gradle-retry.sh assembleDebugAndroidTest
       - name: Check release packaging without production credentials
         run: bash .github/scripts/gradle-retry.sh assembleRelease lintRelease
+      - name: Build published 1.0.3 baseline for upgrade verification
+        if: github.head_ref == 'dev/1.1.0-share'
+        shell: bash
+        run: |
+          set -euo pipefail
+          baseline=e4403d88c6d5ac8d92bd203f766fb05119a7a5d8
+          git fetch --no-tags --depth=1 origin "$baseline"
+          old="$(mktemp -d)"
+          trap 'git worktree remove --force "$old" || true' EXIT
+          git worktree add --detach "$old" "$baseline"
+          bash .github/scripts/gradle-retry.sh -p "$old" assembleDebug
+          cp "$old/app/build/outputs/apk/debug/app-debug.apk" "$RUNNER_TEMP/zaberi-1.0.3-baseline.apk"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$RUNNER_TEMP/zaberi-1.0.3-baseline.apk" | grep -F "package: name='ru.epbloger.zaberi' versionCode='111' versionName='1.0.3'"
       - name: Enable KVM for release candidate tests
         id: emulator_prerequisites
         if: github.head_ref == 'dev/1.1.0-share'
@@ -77,6 +90,7 @@ jobs:
             adb shell settings get secure default_input_method
             adb shell dumpsys input_method > /tmp/zaberi-ime.txt
             bash .github/scripts/verify-adaptive-layouts.sh
+            bash .github/scripts/verify-apk-upgrade.sh
       - name: Verify supported older Android
         if: ${{ !cancelled() && github.head_ref == 'dev/1.1.0-share' && steps.emulator_prerequisites.outcome == 'success' }}
         uses: reactivecircus/android-emulator-runner@v2

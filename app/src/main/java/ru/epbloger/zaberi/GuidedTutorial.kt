@@ -45,7 +45,7 @@ internal enum class GuideStep(val title:String,val description:String,val icon:I
                     GuideInstruction("4","Проверьте и сохраните","Название, магазин и ссылка подставятся из полученных сведений. Цена и главная фотография тоже заполнятся, если магазин их передал или предоставил открытые данные карточки. Для загрузки из интернета включите автозаполнение при первом импорте.")
                     Text("Цена в магазине может отличаться от фактически оплаченной. Если данных не хватает, исправьте поля вручную. Интернет для ручного учёта не нужен.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                GuideStep.MANUAL->OutlinedButton(onClick=practice,modifier=Modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch).testTag("tutorial_practice")){Text("Попробовать добавить заказ")}
+                GuideStep.MANUAL->OutlinedButton(onClick=practice,modifier=Modifier.fillMaxWidth().heightIn(min=UiSpacing.Touch).testTag("tutorial_practice")){Text("Попробовать без сохранения заказа")}
                 GuideStep.ORDERS->GuideInstruction("✓","Отметьте нужное действие","Статус и сумма возврата изменяются только по вашим действиям. Заказ не удаляется при получении.")
                 GuideStep.CALENDAR->GuideInstruction("!","Укажите срок хранения","Напоминание зависит от выбранной даты и настроек уведомлений Android.")
                 GuideStep.STATS->GuideInstruction("₽","Оплаты и возвраты","Проверьте сумму и отметьте оплату, когда деньги действительно списаны.")
