@@ -54,10 +54,17 @@ class ShareImportDeviceTest {
 
     private fun share(intent:Intent){
         compose.activityRule.scenario.onActivity{activity->
-            // Deliver the same Android lifecycle callback to the ActivityScenario-owned instance.
-            // Starting a second task here leaves the tracked Activity paused during teardown.
-            androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
-                .callActivityOnNewIntent(activity,intent.setClass(activity,MainActivity::class.java))
+            // ActivityScenario matches lifecycle events against its original launch Intent.
+            // MainActivity.onNewIntent intentionally calls setIntent; restore only the
+            // scenario's launch identity after exercising the real handler on the UI thread.
+            val launchIntent=activity.intent
+            try{
+                androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+                    .callActivityOnNewIntent(activity,intent.setClass(activity,MainActivity::class.java))
+                assertSame(intent,activity.intent)
+            }finally{
+                activity.intent=launchIntent
+            }
         }
         compose.waitUntil(15000){compose.onAllNodesWithTag("shared_import_panel").fetchSemanticsNodes().isNotEmpty()}
     }
