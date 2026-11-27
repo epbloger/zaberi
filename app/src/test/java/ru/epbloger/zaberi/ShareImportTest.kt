@@ -25,6 +25,15 @@ class ShareImportTest {
         assertNull(sharedProductSeed("Товар\n1.234,50 ₽").price)
         assertEquals(123450L,sharedProductSeed("Товар\n1 234,50 ₽").price)
     }
+    @Test fun incomingTextAndSubjectAreBoundedBeforeParsing(){
+        val url="https://www.ozon.ru/product/item-123/"
+        assertEquals("Чайник\n"+url,combinedSharedText(url,"Чайник"))
+        assertEquals("Чайник",sharedProductSeed(combinedSharedText(url,"Чайник")).name)
+        assertEquals(url,sharedProductSeed(combinedSharedText(url,"Чайник")).link)
+        assertEquals(8192,combinedSharedText("A".repeat(100000),"").length)
+        assertEquals(8192,combinedSharedText(url+"\n"+" ".repeat(100000),"B".repeat(100000)).length)
+        assertNull(sharedProductSeed("A".repeat(8192)+"\n100 ₽").price)
+    }
     @Test fun onlyKnownPublicProductRoutesCanBeRequested(){
         assertNotNull(publicProductUrl("https://ozon.ru/t/example","Ozon"))
         assertNotNull(publicProductUrl("https://www.wildberries.ru/catalog/123/detail.aspx?foo=secret","Wildberries"))
