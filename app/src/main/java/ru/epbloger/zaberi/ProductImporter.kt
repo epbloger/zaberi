@@ -366,13 +366,13 @@ internal fun parseProductMetadata(html:String,page:HttpUrl,store:String):Product
     val gallery=doc.select("[data-widget=webGallery]").firstOrNull()
     if(states.isEmpty()&&gallery==null)return base
     val prices=states.mapNotNull{element->runCatching{rubleText(JSONObject(element.attr("data-state")).string("price"))}.getOrNull()}
-    val price=prices.distinct().singleOrNull()?.takeIf{prices.size==states.size}
+    val ozonPrice=prices.distinct().singleOrNull()?.takeIf{prices.size==states.size}
     val title=doc.select("[data-widget=webProductHeading] h1").firstOrNull()?.text()?.trim()?.take(200)?.takeIf{it.isNotBlank()}
     val image=gallery?.select("img")?.asSequence()?.mapNotNull{img->
         sequenceOf(img.attr("src"),img.attr("data-src")).filter{it.isNotBlank()}
             .mapNotNull{raw->page.resolve(raw)?.toString()?.let{publicImageUrl(it,"Ozon")?.toString()}}.firstOrNull()
     }?.firstOrNull()
-    return ProductMetadata(title?:base.title,if(states.isNotEmpty())price else base.price,base.image?:image)
+    return ProductMetadata(title?:base.title,if(states.isNotEmpty())ozonPrice else base.price,base.image?:image)
 }
 
 internal object ProductImporter {
