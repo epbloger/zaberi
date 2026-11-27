@@ -52,6 +52,33 @@ class ShareImportDeviceTest {
         assertEquals(ProductMetadata(null,null,null),parseProductMetadata(blocked,page,"Ozon"))
     }
 
+    @Test fun shareTargetSupportsHtmlAndMultipleImagesAndClipboardPayload(){
+        val context=compose.activity
+        val url="https://www.wildberries.ru/catalog/330535596/detail.aspx"
+        val html=Intent(Intent.ACTION_SEND).setType("text/html").putExtra(Intent.EXTRA_HTML_TEXT,"<a href='$url'>Товар WB</a>")
+        val multi=Intent(Intent.ACTION_SEND_MULTIPLE).setType("image/jpeg")
+        multi.clipData=android.content.ClipData.newPlainText("product",url)
+        for(intent in listOf(html,multi)){
+            val resolved=context.packageManager.queryIntentActivities(intent.setPackage(context.packageName),0)
+            assertTrue(resolved.any{it.activityInfo.name==MainActivity::class.java.name})
+            val seed=sharedProductSeed(requireNotNull(sharedProductRequest(intent)).text)
+            assertEquals("Wildberries",seed.store)
+            assertEquals(url,seed.link)
+        }
+    }
+    @Test fun currentStorefrontFormatsKeepExactPriceAndPrimaryImage(){
+        val json="""{"products":[{"id":330535596,"name":"Чайник","totalQuantity":5,"sizes":[{"price":{"product":129950,"basic":200000},"stocks":[{"qty":5}]}]}]}"""
+        assertEquals(129950L,parseWildberriesDetails(json,330535596L).price)
+        assertNull(parseWildberriesDetails(json,999L).price)
+        val routes="""{"origin":{"mediabasket_route_map":[{"method":"range","hosts":[{"vol_range_from":3260,"vol_range_to":3400,"host":"basket-20.wbbasket.ru"}]}]}}"""
+        assertEquals("basket-20.wbbasket.ru",wildberriesBasketHost(routes,330535596L))
+        assertNull(wildberriesBasketHost(routes.replace("basket-20.wbbasket.ru","evil.example"),330535596L))
+        val ozon="""<div id="state-webPrice-1" data-state='{"price":"1 299 ₽","cardPrice":"999 ₽","originalPrice":"2 000 ₽"}'></div><div data-widget="webProductHeading"><h1>Чайник</h1></div><div data-widget="webGallery"><img src="https://ir.ozone.ru/s3/first.jpg"><img src="https://ir.ozone.ru/s3/second.jpg"></div>"""
+        val parsed=parseProductMetadata(ozon,"https://www.ozon.ru/product/item-123/".toHttpUrl(),"Ozon")
+        assertEquals(129900L,parsed.price)
+        assertEquals("https://ir.ozone.ru/s3/first.jpg",parsed.image)
+    }
+
     private fun share(intent:Intent){
         compose.activityRule.scenario.onActivity{activity->
             // ActivityScenario matches lifecycle events against its original launch Intent.

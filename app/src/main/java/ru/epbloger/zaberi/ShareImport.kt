@@ -13,7 +13,9 @@ private val validSharedAmount=Regex("(?:[0-9]+|[0-9]{1,3}(?:[ \\u00a0\\u202f][0-
 private const val MAX_SHARED_TEXT=8192
 internal fun sharedProductSeed(text:String):SharedProductSeed {
     val bounded=text.take(MAX_SHARED_TEXT)
-    val link=sharedUrl.find(bounded)?.value?.trimEnd('.',',',';',')',']').orEmpty()
+    val links=sharedUrl.findAll(bounded).map{it.value.trimEnd('.',',',';',')',']')}.toList()
+    val link=links.firstOrNull{candidate->val store=detectStore(candidate);store!=null&&publicProductUrl(candidate,store)!=null}
+        ?:links.firstOrNull{detectStore(it)!=null}?:links.firstOrNull().orEmpty()
     val clean=sharedUrl.replace(bounded," ")
     val candidates=rublePrice.findAll(clean).map{it.groupValues[1].trim()}.toList()
     val prices=candidates.mapNotNull{value->value.takeIf{validSharedAmount.matches(it)}?.let{parseMoney(it.replace('\u00a0',' ').replace('\u202f',' '))}}
@@ -32,13 +34,34 @@ internal fun combinedSharedText(text:String,subject:String):String {
 }
 @Suppress("DEPRECATION")
 internal fun sharedProductRequest(intent:Intent?):SharedProductRequest? {
-    if(intent?.action!=Intent.ACTION_SEND)return null
-    val text=runCatching{intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString().orEmpty()}.getOrDefault("")
-    val subject=runCatching{intent.getStringExtra(Intent.EXTRA_SUBJECT).orEmpty()}.getOrDefault("")
-    val combined=combinedSharedText(text,subject)
-    val image=if(intent.type?.startsWith("image/")==true)runCatching{
-        (intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)?:intent.clipData?.takeIf{it.itemCount>0}?.getItemAt(0)?.uri)?.takeIf{it.scheme=="content"}
-    }.getOrNull() else null
+    if(intent==null||intent.action !in setOf(Intent.ACTION_SEND,Intent.ACTION_SEND_MULTIPLE))return null
+    val chunks=mutableListOf<String>()
+    fun add(value:CharSequence?){value?.toString()?.take(MAX_SHARED_TEXT)?.takeIf{it.isNotBlank()&&!chunks.contains(it)}?.let{chunks.add(it)}}
+    fun addUri(uri:Uri?){if(uri?.scheme in setOf("http","https"))add(uri.toString())}
+    add(runCatching{intent.getCharSequenceExtra(Intent.EXTRA_TEXT)}.getOrNull())
+    if(intent.action==Intent.ACTION_SEND_MULTIPLE){
+        runCatching{intent.getCharSequenceArrayListExtra(Intent.EXTRA_TEXT)}.getOrNull()?.take(8)?.forEach{add(it)}
+    }
+    val html=runCatching{intent.getStringExtra(Intent.EXTRA_HTML_TEXT)}.getOrNull()?.take(MAX_SHARED_TEXT)
+    if(!html.isNullOrBlank()){
+        val doc=org.jsoup.Jsoup.parse(html)
+        if(chunks.isEmpty())add(doc.text())
+        doc.select("a[href]").take(8).forEach{addUri(Uri.parse(it.attr("href")))}
+    }
+    addUri(intent.data)
+    val clip=intent.clipData
+    var image:Uri?=null
+    if(clip!=null)for(i in 0 until minOf(clip.itemCount,8)){
+        val item=clip.getItemAt(i)
+        add(item.text);addUri(item.uri)
+        if(image==null&&item.uri?.scheme=="content")image=item.uri
+    }
+    val stream=if(intent.action==Intent.ACTION_SEND_MULTIPLE)
+        runCatching{intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)}.getOrNull()?.firstOrNull{it.scheme=="content"}
+        else runCatching{intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)}.getOrNull()?.takeIf{it.scheme=="content"}
+    image=stream?:image
+    val subject=runCatching{intent.getCharSequenceExtra(Intent.EXTRA_SUBJECT)?.toString().orEmpty()}.getOrDefault("")
+    val combined=combinedSharedText(chunks.joinToString("\n").take(MAX_SHARED_TEXT),subject)
     if(combined.isBlank()&&image==null)return null
     return SharedProductRequest(uid(),combined,image)
 }

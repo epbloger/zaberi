@@ -34,6 +34,12 @@ class ShareImportTest {
         assertEquals(8192,combinedSharedText(url+"\n"+" ".repeat(100000),"B".repeat(100000)).length)
         assertNull(sharedProductSeed("A".repeat(8192)+"\n100 ₽").price)
     }
+    @Test fun picksProductLinkBeforeUnrelatedLink(){
+        val seed=sharedProductSeed("https://example.org\nhttps://www.wildberries.ru/catalog/330535596/detail.aspx")
+        assertEquals("Wildberries",seed.store)
+        assertEquals("https://www.wildberries.ru/catalog/330535596/detail.aspx",seed.link)
+        assertEquals("https://www.wildberries.ru/catalog/330535596/detail.aspx",publicProductUrl("https://www.wildberries.ru/catalog/330535596","Wildberries")?.toString())
+    }
     @Test fun onlyKnownPublicProductRoutesCanBeRequested(){
         assertNotNull(publicProductUrl("https://ozon.ru/t/example","Ozon"))
         assertNotNull(publicProductUrl("https://www.wildberries.ru/catalog/123/detail.aspx?foo=secret","Wildberries"))

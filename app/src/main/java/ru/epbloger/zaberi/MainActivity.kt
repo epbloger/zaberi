@@ -54,7 +54,7 @@ class MainActivity:ComponentActivity(){
     private var openId by mutableStateOf<String?>(null)
     private fun handle(i:Intent?){
         sharedProductRequest(i)?.let{model.receiveShare(it)}
-        if(i?.action!=Intent.ACTION_SEND)openId=runCatching{i?.getStringExtra("orderId")}.getOrNull()
+        if(i?.action !in setOf(Intent.ACTION_SEND,Intent.ACTION_SEND_MULTIPLE))openId=runCatching{i?.getStringExtra("orderId")}.getOrNull()
     }
     override fun onCreate(savedInstanceState:Bundle?){
         super.onCreate(savedInstanceState);enableEdgeToEdge()
@@ -99,6 +99,8 @@ class MainActivity:ComponentActivity(){
     var searchVisible by rememberSaveable{mutableStateOf(false)}
     val snack=remember{SnackbarHostState()}
     val ctx=LocalContext.current
+    val clipboard=androidx.compose.ui.platform.LocalClipboardManager.current
+    val importScope=rememberCoroutineScope()
     val adsReady=rememberAdsReady(preferences.personalizedAds,AdPrivacyPolicy.ageRestricted(BuildConfig.STORE_AGE,preferences.adultAdsConfirmed))
     val adController=remember(ctx,preferences.personalizedAds,preferences.adultAdsEligible,adsReady){
         if(adsReady&&ctx is ComponentActivity&&BuildConfig.INTERSTITIAL_ID.isNotBlank())runCatching{InterstitialController(ctx,BuildConfig.INTERSTITIAL_ID)}.getOrNull() else null
@@ -177,7 +179,15 @@ class MainActivity:ComponentActivity(){
             windowInsets=WindowInsets(0,0,0,0),
             title={Text(order?.name?:if(tab==0)"ЗАБЕРИ." else if(tab==3&&settingsPage.isNotEmpty())settingsPage else nav[tab],fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)},
             navigationIcon={if(order!=null||settingsPage.isNotEmpty())IconButton(onClick={if(order!=null)closeDetail() else settingsPage=if(settingsPage in listOf("Конфиденциальность","Условия использования","Реклама и сторонние сервисы","Разработчик и контакты"))"Юридическая информация" else ""}){Icon(Icons.Default.ArrowBack,"Назад")}},
-            actions={if(order!=null)IconButton(onClick={editing=true}){Icon(Icons.Default.Edit,"Редактировать")}else if(tab==0)IconButton(onClick={searchVisible=!searchVisible}){Icon(if(searchVisible)Icons.Default.Close else Icons.Default.Search,"Поиск")}},
+            actions={if(order!=null)IconButton(onClick={editing=true}){Icon(Icons.Default.Edit,"Редактировать")}else if(tab==0){
+                IconButton(onClick={
+                    val text=clipboard.getText()?.text.orEmpty().take(8192)
+                    val seed=sharedProductSeed(text)
+                    if(seed.link.isNotBlank()&&seed.store.isNotBlank())vm.receiveShare(SharedProductRequest(uid(),text,null))
+                    else importScope.launch{snack.showSnackbar("Скопируйте ссылку на товар в магазине")}
+                },modifier=Modifier.testTag("paste_product_link")){Icon(Icons.Default.ContentPaste,"Импорт ссылки из буфера")}
+                IconButton(onClick={searchVisible=!searchVisible}){Icon(if(searchVisible)Icons.Default.Close else Icons.Default.Search,"Поиск")}
+            }},
             colors=TopAppBarDefaults.topAppBarColors(containerColor=MaterialTheme.colorScheme.background)
         )},
         bottomBar={if(order==null&&settingsPage.isEmpty())NavigationBar(windowInsets=WindowInsets(0,0,0,0),containerColor=MaterialTheme.colorScheme.surface){nav.forEachIndexed{i,s->NavigationBarItem(selected=tab==i,onClick={tab=i;searchVisible=false},icon={Icon(icons[i],s)},label={Text(s,style=MaterialTheme.typography.labelSmall,maxLines=1,overflow=TextOverflow.Ellipsis)})}}},
