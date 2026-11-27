@@ -11,7 +11,7 @@ private val sharedUrl=Regex("https?://[^\\s<>\"']+",RegexOption.IGNORE_CASE)
 private val rublePrice=Regex("(?<![\\d.,])([+\\-−]?[ \\u00a0\\u202f]*[0-9][0-9., \\u00a0\\u202f]*?)\\s*(?:₽|руб(?:\\.|лей|ля|ль)?(?![\\p{L}])|RUB\\b)",RegexOption.IGNORE_CASE)
 private val validSharedAmount=Regex("(?:[0-9]+|[0-9]{1,3}(?:[ \\u00a0\\u202f][0-9]{3})+)(?:[.,][0-9]{1,2})?")
 private const val MAX_SHARED_TEXT=8192
-private val ordinaryLabel=Regex("(?i)\\b(?:обычная\\s+цена|без\\s+(?:карты(?:\\s+(?:Ozon|Озон|WB|Яндекс\\s+Пэй))?|(?:Яндекс\\s+)?Пэй|(?:WB\\s+)?кошелька))\\b")
+private val ordinaryLabel=Regex("(?iu)(?<![\\p{L}\\p{N}])(?:обычная\\s+цена|без\\s+(?:карты(?:\\s+(?:Ozon|Озон|WB|Яндекс\\s+Пэй))?|(?:Яндекс\\s+)?Пэй|(?:WB\\s+)?кошелька|(?:Яндекс\\s+)?Сплита))(?![\\p{L}\\p{N}])")
 internal fun ordinaryPriceFromText(text:String):Long?{
     fun amounts(line:String)=rublePrice.findAll(line).mapNotNull{
         val raw=it.groupValues[1].trim()

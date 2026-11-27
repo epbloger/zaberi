@@ -32,6 +32,9 @@ class ShareImportTest {
         assertEquals(129900L,ordinaryPriceFromText("Без карты Яндекс Пэй\n1 299 ₽"))
         assertNull(ordinaryPriceFromText("999 ₽ с картой\n2 000 ₽ старая цена"))
         assertNull(ordinaryPriceFromText("без карты от 100 ₽"))
+        assertEquals(129900L,ordinaryPriceFromText("1 299 ₽ БЕЗ КАРТЫ"))
+        assertNull(ordinaryPriceFromText("необычная цена 100 ₽"))
+        assertNull(ordinaryPriceFromText("100 ₽ без карты\n200 ₽ без карты"))
     }
     @Test fun incomingTextAndSubjectAreBoundedBeforeParsing(){
         val url="https://www.ozon.ru/product/item-123/"

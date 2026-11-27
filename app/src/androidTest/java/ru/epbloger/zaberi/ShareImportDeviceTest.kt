@@ -99,6 +99,13 @@ class ShareImportDeviceTest {
             assertNull(store,parseProductMetadata(html.replace("schema.org/Offer","schema.org/AggregateOffer"),link.toHttpUrl(),store).price)
         }
     }
+    @Test fun ozonGalleryStateAndWithoutCardPriceTakePriority(){
+        val html="""<div id="state-webPrice-1" data-state='{"price":"999 ₽","priceWithoutCard":"1 299 ₽","cardPrice":"999 ₽","originalPrice":"2 000 ₽"}'></div><div id="state-webGallery-1" data-state='{"coverImage":"https://ir.ozone.ru/s3/cover.jpg","images":[{"src":"https://ir.ozone.ru/s3/first.jpg"}]}'></div><div data-widget="webProductHeading"><h1>Чайник</h1></div>"""
+        val p=parseProductMetadata(html,"https://www.ozon.ru/product/item-123/".toHttpUrl(),"Ozon")
+        assertEquals("Чайник",p.title)
+        assertEquals(129900L,p.price)
+        assertEquals("https://ir.ozone.ru/s3/cover.jpg",p.image)
+    }
     @Test fun renderedCardPrefersExplicitRegularPriceAndKeepsMainPhoto(){
         val page="https://market.yandex.ru/card/item/123".toHttpUrl()
         val html="""<h1>Чайник</h1><meta property="og:image" content="https://avatars.mds.yandex.net/get-mpic/123/orig">"""

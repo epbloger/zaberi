@@ -49,7 +49,7 @@ private fun productPath(store:String,path:String,host:String):Boolean {
     return when(store){
         "Ozon"->path.startsWith("/product/")||path.startsWith("/t/")
         "Wildberries"->wildberriesArticle(path)!=null
-        "Яндекс Маркет"->path.startsWith("/product--")||path.startsWith("/product/")||path.startsWith("/card/")||path.startsWith("/cc/")
+        "Яндекс Маркет"->path.startsWith("/product--")||path.startsWith("/product/")||path.startsWith("/card/")||path.startsWith("/p/")||path.startsWith("/cc/")
         "Авито"->Regex("/.+_\\d+/?").matches(path)&&!path.startsWith("/profile/")
         "Мегамаркет"->path.startsWith("/catalog/details/")
         "AliExpress"->Regex("/item/\\d+(?:\\.html)?/?").matches(path)||
@@ -369,15 +369,29 @@ internal fun parseProductMetadata(html:String,page:HttpUrl,store:String):Product
     val doc=Jsoup.parse(html,page.toString())
     val states=doc.select("[id^=state-webPrice-][data-state]").take(8)
     val gallery=doc.select("[data-widget=webGallery]").firstOrNull()
-    if(states.isEmpty()&&gallery==null)return base
+    val galleryState=doc.select("[id^=state-webGallery-][data-state]").firstOrNull()
+    if(states.isEmpty()&&gallery==null&&galleryState==null)return base
     val prices=states.mapNotNull{element->runCatching{val state=JSONObject(element.attr("data-state"));rubleText(state.string("priceWithoutCard"))?:rubleText(state.string("price"))}.getOrNull()}
     val ozonPrice=prices.distinct().singleOrNull()?.takeIf{prices.size==states.size}
     val title=doc.select("[data-widget=webProductHeading] h1").firstOrNull()?.text()?.trim()?.take(200)?.takeIf{it.isNotBlank()}
+    val stateImage=galleryState?.let{element->
+        runCatching{
+            val state=JSONObject(element.attr("data-state"))
+            val cover=state.opt("coverImage")
+            val first=state.optJSONArray("images")?.opt(0)
+            fun source(value:Any?):String?=when(value){
+                is String->value
+                is JSONObject->value.string("src")?:value.string("url")
+                else->null
+            }
+            source(cover)?:source(first)
+        }.getOrNull()
+    }?.let{page.resolve(it)?.toString()}?.let{publicImageUrl(it,store)?.toString()}
     val image=gallery?.select("img")?.asSequence()?.mapNotNull{img->
         sequenceOf(img.attr("src"),img.attr("data-src")).filter{it.isNotBlank()}
             .mapNotNull{raw->page.resolve(raw)?.toString()?.let{publicImageUrl(it,"Ozon")?.toString()}}.firstOrNull()
     }?.firstOrNull()
-    return ProductMetadata(title?:base.title,if(states.isNotEmpty())ozonPrice else base.price,base.image?:image)
+    return ProductMetadata(title?:base.title,if(states.isNotEmpty())ozonPrice else base.price,stateImage?:base.image?:image)
 }
 
 internal fun isShortProductUrl(url:HttpUrl,store:String):Boolean=when(store){

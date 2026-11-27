@@ -33,7 +33,7 @@ private val readCardScript="""
     if(html.length>700000||size+html.length>1600000)return;
     parts.push(html);size+=html.length;
   }
-  document.querySelectorAll('meta[property],meta[name],script[type="application/ld+json"],h1,[itemscope][itemtype*="Product"],[id^="state-webPrice-"][data-state],[data-widget="webGallery"],[data-widget="webProductHeading"]').forEach(append);
+  document.querySelectorAll('meta[property],meta[name],script[type="application/ld+json"],h1,[itemscope][itemtype*="Product"],[id^="state-webPrice-"][data-state],[id^="state-webGallery-"][data-state],[data-widget="webGallery"],[data-widget="webProductHeading"]').forEach(append);
   const priceText=[];
   const scope=document.querySelector('main')||document.body;
   if(scope){
@@ -42,7 +42,7 @@ private val readCardScript="""
       const e=nodes[i];
       if(e.childElementCount>8||!e.getClientRects().length)continue;
       const t=(e.innerText||'').trim();
-      if(t.length>0&&t.length<170&&/(без\s+(карты|пэй|кошелька|яндекс|wb)|обычная\s+цена)/i.test(t)){
+      if(t.length>0&&t.length<170&&/(без\s+(карты|пэй|кошелька|яндекс|wb|сплита)|обычная\s+цена)/i.test(t)){
         let context=t;
         if(!/₽/.test(t)&&e.parentElement){
           const p=(e.parentElement.innerText||'').trim();
