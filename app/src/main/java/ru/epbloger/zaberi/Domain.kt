@@ -25,11 +25,17 @@ fun nextStatus(current: Status, event: String, paid: Long = 0L): Status = when (
     "cancel" -> { require(current == Status.TRANSIT || current == Status.READY); if (paid > 0) Status.REFUND else Status.CANCELLED }
     else -> error("Unknown action")
 }
+internal fun quickOrderEvent(status:Status):String?=when(status){
+    Status.TRANSIT->"arrived"
+    Status.READY->"received"
+    Status.RECEIVED->"keep"
+    else->null
+}
 fun detectStore(text: String): String? {
     val url = Regex("https?://[^\\s]+", RegexOption.IGNORE_CASE).find(text)?.value ?: return null
     val host = runCatching { java.net.URI(url).host?.lowercase() }.getOrNull() ?: return null
     fun matches(domain: String) = host == domain || host.endsWith(".$domain")
-    return when { matches("ozon.ru") || matches("ozon.com") -> "Ozon"; matches("wildberries.ru") || matches("wb.ru") -> "Wildberries"; matches("market.yandex.ru") -> "Яндекс Маркет"; matches("avito.ru") -> "Авито"; matches("megamarket.ru") -> "Мегамаркет"; matches("aliexpress.ru") -> "AliExpress"; matches("lamoda.ru") -> "Lamoda"; else -> null }
+    return when { matches("ozon.ru") || matches("ozon.com") -> "Ozon"; matches("wildberries.ru") || matches("wb.ru") -> "Wildberries"; matches("market.yandex.ru") -> "Яндекс Маркет"; matches("avito.ru") -> "Авито"; matches("megamarket.ru") || matches("sbermegamarket.ru") -> "Мегамаркет"; matches("aliexpress.ru") || matches("aliexpress.com") -> "AliExpress"; matches("lamoda.ru") -> "Lamoda"; matches("dns-shop.ru") -> "DNS"; else -> null }
 }
 fun refundTargetValid(paid:Long,received:Long,target:Long):Boolean = paid>=0 && received in 0..paid && target in received..paid
 fun validOperationDate(value:String,today:LocalDate):Boolean = runCatching { val date=LocalDate.parse(value); !date.isAfter(today) }.getOrDefault(false)

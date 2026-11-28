@@ -50,29 +50,35 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 class MainActivity:ComponentActivity(){
-    private var shared by mutableStateOf<String?>(null)
+    private val model by lazy{androidx.lifecycle.ViewModelProvider(this)[Model::class.java]}
     private var openId by mutableStateOf<String?>(null)
     private fun handle(i:Intent?){
-        if(i?.action==Intent.ACTION_SEND)shared=i.getStringExtra(Intent.EXTRA_TEXT)?.take(8192)
-        openId=i?.getStringExtra("orderId")
+        sharedProductRequest(i)?.let{model.receiveShare(it)}
+        if(i?.action !in setOf(Intent.ACTION_SEND,Intent.ACTION_SEND_MULTIPLE))openId=runCatching{i?.getStringExtra("orderId")}.getOrNull()
     }
     override fun onCreate(savedInstanceState:Bundle?){
         super.onCreate(savedInstanceState);enableEdgeToEdge()
-        if(savedInstanceState==null)handle(intent)
+        if(savedInstanceState==null)handle(intent) else openId=savedInstanceState.getString("pending_order_id")
         Reminders.enqueue(this)
         setContent{
             val preferences=remember{Preferences(applicationContext)}
             val dark=when(preferences.theme){"dark"->true;"light"->false;else->isSystemInDarkTheme()}
             MaterialTheme(colorScheme=if(dark)darkColorScheme(primary=Color(0xFFA9B2FF))else lightColorScheme(primary=Brand,onPrimary=Color.White,primaryContainer=Color(0xFFE6E9FF),onPrimaryContainer=Color(0xFF202B78),background=Color(0xFFF6F7FB),surface=Color.White,surfaceVariant=Color(0xFFF0F1F6),onSurfaceVariant=Color(0xFF4E5263),outlineVariant=Color(0xFFE0E3EC))){
-                SafeAppViewport{MapOverlayHost{Home(shared,openId,{shared=null},{openId=null},preferences)}}
+                SafeAppViewport{MapOverlayHost{Home(openId,{openId=null},preferences,model)}}
             }
         }
+    }
+    override fun onSaveInstanceState(outState:Bundle){
+        outState.putString("pending_order_id",openId)
+        super.onSaveInstanceState(outState)
     }
     override fun onNewIntent(intent:Intent){super.onNewIntent(intent);setIntent(intent);handle(intent)}
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable fun Home(shared:String?,openId:String?,consume:()->Unit,consumeId:()->Unit,preferences:Preferences,vm:Model=viewModel()){
+@Composable internal fun Home(openId:String?,consumeId:()->Unit,preferences:Preferences,vm:Model=viewModel()){
+    val shared by vm.pendingShare.collectAsStateWithLifecycle()
+    val productImport by vm.productImport.collectAsStateWithLifecycle()
     val orders by vm.orders.collectAsStateWithLifecycle()
     val tx by vm.transactions.collectAsStateWithLifecycle()
     val history by vm.history.collectAsStateWithLifecycle()
@@ -84,10 +90,17 @@ class MainActivity:ComponentActivity(){
     val saving by vm.formSaving.collectAsStateWithLifecycle()
     val savedForm by vm.savedForm.collectAsStateWithLifecycle()
     var imported by rememberSaveable{mutableStateOf("")}
+    var shareId by rememberSaveable{mutableStateOf<String?>(null)}
+    var guideStep by rememberSaveable{mutableIntStateOf(if(!preferences.tutorialSeen&&shared==null&&openId==null)0 else -1)}
+    var guidePractice by rememberSaveable{mutableStateOf(false)}
+    fun clearImport(){vm.clearProductImport(shareId);shareId=null;imported=""}
+    fun stopGuide(){guideStep=-1;guidePractice=false;preferences.finishTutorial()}
     var settingsPage by rememberSaveable{mutableStateOf("")}
     var searchVisible by rememberSaveable{mutableStateOf(false)}
     val snack=remember{SnackbarHostState()}
     val ctx=LocalContext.current
+    val clipboard=androidx.compose.ui.platform.LocalClipboardManager.current
+    val importScope=rememberCoroutineScope()
     val adsReady=rememberAdsReady(preferences.personalizedAds,AdPrivacyPolicy.ageRestricted(BuildConfig.STORE_AGE,preferences.adultAdsConfirmed))
     val adController=remember(ctx,preferences.personalizedAds,preferences.adultAdsEligible,adsReady){
         if(adsReady&&ctx is ComponentActivity&&BuildConfig.INTERSTITIAL_ID.isNotBlank())runCatching{InterstitialController(ctx,BuildConfig.INTERSTITIAL_ID)}.getOrNull() else null
@@ -96,16 +109,32 @@ class MainActivity:ComponentActivity(){
     var adOpportunity by remember{mutableStateOf(false)}
     var openedStatus by rememberSaveable{mutableStateOf<String?>(null)}
     val notificationPermission=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()){granted->if(granted)Reminders.enqueue(ctx)}
-    LaunchedEffect(Unit){
-        if(Build.VERSION.SDK_INT>=33&&preferences.enabled&&ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED&&!preferences.notificationAsked){
+    LaunchedEffect(guideStep,guidePractice,add,editing,shared?.id){
+        if(guideStep<0&&!guidePractice&&!add&&!editing&&shared==null&&Build.VERSION.SDK_INT>=33&&preferences.enabled&&ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED&&!preferences.notificationAsked){
             preferences.markNotificationAsked()
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
     LaunchedEffect(Unit){vm.errors.collect{snack.showSnackbar(it)}}
-    LaunchedEffect(savedForm){savedForm?.let{id->if(add&&!editing&&shared==null&&openId==null)adOpportunity=true;add=false;editing=false;tab=0;vm.consumeSavedForm(id)}}
-    LaunchedEffect(shared,saving){if(shared!=null&&!saving){selected=null;editing=false;settingsPage="";tab=0;imported=shared;add=true;consume()}}
-    LaunchedEffect(openId,orders,saving){if(!saving&&openId!=null&&orders.any{it.id==openId}){add=false;editing=false;settingsPage="";tab=0;selected=openId;openedStatus=null;consumeId()}}
+    fun openShared(request:SharedProductRequest){
+        val accepted=vm.acceptShare(request.id,preferences.onlineProductImport)?:return
+        guideStep=-1;guidePractice=false
+        selected=null;editing=false;settingsPage="";tab=0
+        imported=accepted.text;shareId=accepted.id;add=true
+    }
+    LaunchedEffect(savedForm){savedForm?.let{id->if(add&&!editing&&shared==null&&openId==null&&guideStep<0&&!guidePractice)adOpportunity=true;add=false;editing=false;tab=0;vm.consumeSavedForm(id)}}
+    LaunchedEffect(shared?.id,saving,add,editing){if(!saving&&!add&&!editing)shared?.let{openShared(it)}}
+    LaunchedEffect(add,shareId,productImport?.requestId){
+        val id=shareId
+        if(add&&id!=null&&productImport==null)vm.restoreProductImport(id,imported)
+    }
+    LaunchedEffect(add,editing,shareId){
+        if(!add&&!editing){
+            if(shareId!=null)clearImport()
+            if(guidePractice){guidePractice=false;guideStep=GuideStep.ORDERS.ordinal;tab=0}
+        }
+    }
+    LaunchedEffect(openId,orders,saving,add,editing,shared?.id){if(!saving&&!add&&!editing&&shared==null&&openId!=null&&orders.any{it.id==openId}){guideStep=-1;guidePractice=false;add=false;editing=false;settingsPage="";tab=0;selected=openId;openedStatus=null;consumeId()}}
     val order=orders.firstOrNull{it.id==selected}
     fun closeDetail(){
         if(tab==0&&openedStatus!=null&&order!=null&&openedStatus!=order.status&&order.state in listOf(Status.READY,Status.RECEIVED,Status.DONE)&&!order.returned&&!order.cancelled)adOpportunity=true
@@ -114,16 +143,32 @@ class MainActivity:ComponentActivity(){
     LaunchedEffect(adOpportunity,add,editing,selected,tab,shared,openId){
         if(adOpportunity){
             adOpportunity=false
-            if(!add&&!editing&&selected==null&&tab==0&&shared==null&&openId==null&&settingsPage.isEmpty())runCatching{adController?.atNaturalPause()}
+            if(!add&&!editing&&selected==null&&tab==0&&shared==null&&openId==null&&settingsPage.isEmpty()&&guideStep<0&&!guidePractice)runCatching{adController?.atNaturalPause()}
         }
     }
-    BackHandler(enabled=add||editing||order!=null||settingsPage.isNotEmpty()||searchVisible){if(saving)Unit else if(add)add=false else if(editing)editing=false else if(order!=null)closeDetail() else if(settingsPage.isNotEmpty())settingsPage=if(settingsPage in listOf("Конфиденциальность","Условия использования","Реклама и сторонние сервисы","Разработчик и контакты"))"Юридическая информация" else "" else searchVisible=false}
+    BackHandler(enabled=guideStep>=0||add||editing||order!=null||settingsPage.isNotEmpty()||searchVisible){if(saving)Unit else if(guideStep>=0)stopGuide() else if(add)add=false else if(editing)editing=false else if(order!=null)closeDetail() else if(settingsPage.isNotEmpty())settingsPage=if(settingsPage in listOf("Конфиденциальность","Условия использования","Реклама и сторонние сервисы","Разработчик и контакты"))"Юридическая информация" else "" else searchVisible=false}
     val nav=listOf("Заказы","Календарь","Статистика","Настройки")
     val icons=listOf(Icons.Default.Inventory2,Icons.Default.CalendarMonth,Icons.Default.BarChart,Icons.Default.Settings)
-    if(add||editing&&order!=null){
+    if(guideStep>=0&&!add&&!editing&&shared==null&&openId==null){
+        key(guideStep){
+            val step=GuideStep.entries[guideStep.coerceIn(0,GuideStep.entries.lastIndex)]
+            GuidePanel(step,next={
+                if(step==GuideStep.SETTINGS){stopGuide();tab=0}
+                else{guideStep++;tab=GuideStep.entries[guideStep].tab}
+            },back={if(guideStep>0){guideStep--;tab=GuideStep.entries[guideStep].tab}},skip={stopGuide();tab=0},practice={
+                guideStep=-1;guidePractice=true;clearImport();tab=0;add=true
+            })
+        }
+    }else if(add||editing&&order!=null){
         Box(Modifier.fillMaxSize()){
-            key(if(add)"new:"+imported else order?.id){
-                OrderForm(if(add)null else order,if(add)imported else "",catalog,orders,saving,{if(!saving){add=false;editing=false}}){o->vm.saveForm(o,!add)}
+            key(if(add)"new:"+(shareId?:"manual") else order?.id){
+                val state=productImport?.takeIf{add&&it.requestId==shareId}
+                OrderForm(if(add)null else order,if(add)imported else "",catalog,orders,saving,{if(!saving){add=false;editing=false}},
+                    sharedState=state,enableLookup=state?.let{current->{preferences.onlineProductImport(true);vm.enrichSharedProduct(current.requestId)}},
+                    cancelLookup=state?.let{current->{vm.cancelProductImport(current.requestId)}},
+                    renderedLookup=state?.let{current->{result:ProductLookup->vm.applyRenderedProduct(current.requestId,result)}},practice=guidePractice){o,photo->
+                    if(guidePractice){add=false;editing=false}else vm.saveForm(o,!add,photo)
+                }
             }
             SnackbarHost(snack,Modifier.align(Alignment.TopCenter))
         }
@@ -135,15 +180,31 @@ class MainActivity:ComponentActivity(){
             windowInsets=WindowInsets(0,0,0,0),
             title={Text(order?.name?:if(tab==0)"ЗАБЕРИ." else if(tab==3&&settingsPage.isNotEmpty())settingsPage else nav[tab],fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)},
             navigationIcon={if(order!=null||settingsPage.isNotEmpty())IconButton(onClick={if(order!=null)closeDetail() else settingsPage=if(settingsPage in listOf("Конфиденциальность","Условия использования","Реклама и сторонние сервисы","Разработчик и контакты"))"Юридическая информация" else ""}){Icon(Icons.Default.ArrowBack,"Назад")}},
-            actions={if(order!=null)IconButton(onClick={editing=true}){Icon(Icons.Default.Edit,"Редактировать")}else if(tab==0)IconButton(onClick={searchVisible=!searchVisible}){Icon(if(searchVisible)Icons.Default.Close else Icons.Default.Search,"Поиск")}},
+            actions={if(order!=null)IconButton(onClick={editing=true}){Icon(Icons.Default.Edit,"Редактировать")}else if(tab==0){
+                IconButton(onClick={
+                    val text=clipboard.getText()?.text.orEmpty().take(8192)
+                    val seed=sharedProductSeed(text)
+                    if(seed.link.isNotBlank()&&seed.store.isNotBlank())vm.receiveShare(SharedProductRequest(uid(),text,null))
+                    else importScope.launch{snack.showSnackbar("Скопируйте ссылку на товар в магазине")}
+                },modifier=Modifier.testTag("paste_product_link")){Icon(Icons.Default.ContentPaste,"Импорт ссылки из буфера")}
+                IconButton(onClick={searchVisible=!searchVisible}){Icon(if(searchVisible)Icons.Default.Close else Icons.Default.Search,"Поиск")}
+            }},
             colors=TopAppBarDefaults.topAppBarColors(containerColor=MaterialTheme.colorScheme.background)
         )},
         bottomBar={if(order==null&&settingsPage.isEmpty())NavigationBar(windowInsets=WindowInsets(0,0,0,0),containerColor=MaterialTheme.colorScheme.surface){nav.forEachIndexed{i,s->NavigationBarItem(selected=tab==i,onClick={tab=i;searchVisible=false},icon={Icon(icons[i],s)},label={Text(s,style=MaterialTheme.typography.labelSmall,maxLines=1,overflow=TextOverflow.Ellipsis)})}}},
-        floatingActionButton={if(order==null&&tab==0)ExtendedFloatingActionButton(containerColor=actionColor(ActionTone.DELIVERY),contentColor=Color.White,onClick={imported="";add=true},modifier=Modifier.testTag("new_order"),icon={Icon(Icons.Default.Add,null)},text={Text("Добавить заказ")})}
+        floatingActionButton={if(order==null&&tab==0)ExtendedFloatingActionButton(containerColor=actionColor(ActionTone.DELIVERY),contentColor=Color.White,onClick={clearImport();add=true},modifier=Modifier.testTag("new_order"),icon={Icon(Icons.Default.Add,null)},text={Text("Добавить заказ")})}
     ){pad->
         Box(Modifier.fillMaxSize().padding(pad)){
-            when{order!=null->Detail(order,history.filter{it.orderId==order.id},vm,{selected=null},{editing=true});tab==0->key(preferences.adultAdsEligible,preferences.personalizedAds){Orders(orders,{selected=it.id;openedStatus=it.status},{vm.act(it.id,"received")},searchVisible,{imported="";add=true},preferences.personalizedAds,adsReady)};tab==1->CalendarPage(orders,{selected=it.id;openedStatus=it.status});tab==2->Stats(orders,tx);else->SettingsPage(preferences,catalog,vm,settingsPage,{settingsPage=it})}
+            when{order!=null->Detail(order,history.filter{it.orderId==order.id},vm,{selected=null},{editing=true});tab==0->key(preferences.adultAdsEligible,preferences.personalizedAds){Orders(orders,{selected=it.id;openedStatus=it.status},{o,event->vm.act(o.id,event,expectedState=o.state)},searchVisible,{clearImport();add=true},preferences.personalizedAds,adsReady,vm::cover)};tab==1->CalendarPage(orders,{selected=it.id;openedStatus=it.status});tab==2->Stats(orders,tx);else->SettingsPage(preferences,catalog,vm,settingsPage,{if(it=="Обучение"){settingsPage="";guideStep=0;tab=0}else settingsPage=it})}
         }
     }
+    val waitingShare=shared
+    if(waitingShare!=null&&(add||editing)&&!saving){
+        AlertDialog(onDismissRequest={vm.dismissShare(waitingShare.id)},
+            title={Text("Открыть новый товар?")},text={Text("У вас открыт несохранённый заказ. Если открыть новую карточку, изменения текущего черновика не сохранятся.")},
+            confirmButton={TextButton(onClick={clearImport();openShared(waitingShare)}){Text("Открыть новый")}},
+            dismissButton={TextButton(onClick={vm.dismissShare(waitingShare.id)}){Text("Оставить черновик")}})
+    }
+
 }
 

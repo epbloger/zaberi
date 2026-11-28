@@ -7,6 +7,9 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.withLock
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.util.UUID
@@ -25,9 +28,73 @@ class Model(app: Application): AndroidViewModel(app) {
     val formSaving = _formSaving.asStateFlow()
     private val _savedForm = MutableStateFlow<String?>(null)
     val savedForm = _savedForm.asStateFlow()
+    private val _pendingShare=MutableStateFlow<SharedProductRequest?>(null)
+    internal val pendingShare=_pendingShare.asStateFlow()
+    private val _productImport=MutableStateFlow<ProductImportState?>(null)
+    internal val productImport=_productImport.asStateFlow()
+    private var importJob:Job?=null
+    internal var lookupProductDetails:suspend (SharedProductSeed,Boolean)->ProductLookup=ProductImporter::lookup
+    internal fun receiveShare(request:SharedProductRequest){_pendingShare.value=request}
+    internal fun dismissShare(id:String){_pendingShare.value?.takeIf{it.id==id}?.let{_pendingShare.compareAndSet(it,null)}}
+    internal fun clearProductImport(id:String?){
+        if(id!=null&&_productImport.value?.requestId==id){
+            importJob?.cancel();importJob=null;_productImport.value=null
+        }
+    }
+    internal fun cancelProductImport(id:String){
+        val state=_productImport.value?.takeIf{it.requestId==id&&it.loading}?:return
+        importJob?.cancel();importJob=null
+        _productImport.value=state.copy(loading=false,attempted=true,message="Загрузка остановлена. Можно сохранить заказ без недостающих сведений.")
+    }
+    internal fun restoreProductImport(id:String,text:String){
+        if(_productImport.value!=null)return
+        _productImport.value=ProductImportState(id,sharedProductSeed(text),message="Черновик восстановлен после перезапуска. Несохранённое фото нужно загрузить заново или добавить после сохранения.")
+    }
+    internal fun acceptShare(id:String,online:Boolean):SharedProductRequest?{
+        val request=_pendingShare.value?.takeIf{it.id==id}?:return null
+        if(!_pendingShare.compareAndSet(request,null))return null
+        importJob?.cancel()
+        val seed=sharedProductSeed(request.text)
+        val fetchOnline=online&&publicProductUrl(seed.link,seed.store)!=null
+        _productImport.value=ProductImportState(id,seed,loading=request.image!=null||fetchOnline)
+        importJob=viewModelScope.launch{
+            val photo=try{ProductImporter.readSharedImage(getApplication(),request)}
+                catch(e:CancellationException){throw e}catch(_:Exception){null}
+            val current=_productImport.value?.takeIf{it.requestId==id}?:return@launch
+            _productImport.value=current.copy(photo=photo,loading=fetchOnline,message=if(request.image!=null&&photo==null)"Не удалось открыть переданное фото. Можно добавить его вручную." else null)
+            if(fetchOnline)lookupProduct(id)
+        }
+        return request
+    }
+    internal fun enrichSharedProduct(id:String){
+        val state=_productImport.value?.takeIf{it.requestId==id&&!it.loading}?:return
+        if(publicProductUrl(state.seed.link,state.seed.store)==null)return
+        importJob?.cancel()
+        importJob=viewModelScope.launch{lookupProduct(id)}
+    }
+    internal fun applyRenderedProduct(id:String,result:ProductLookup){
+        val current=_productImport.value?.takeIf{it.requestId==id&&!it.loading}?:return
+        _productImport.value=current.copy(title=result.title?:current.title,price=result.price?:current.price,
+            photo=current.photo?:result.photo,attempted=true,message=result.warning)
+    }
+    private suspend fun lookupProduct(id:String){
+        val state=_productImport.value?.takeIf{it.requestId==id}?:return
+        if(publicProductUrl(state.seed.link,state.seed.store)==null)return
+        if(state.seed.name.isNotBlank()&&state.seed.price!=null&&state.photo!=null){
+            _productImport.value=state.copy(loading=false)
+            return
+        }
+        _productImport.value=state.copy(loading=true,attempted=true,message=null)
+        val result=try{lookupProductDetails(state.seed,state.photo==null)}
+            catch(e:CancellationException){throw e}
+            catch(_:Exception){ProductLookup(null,null,null,"Не удалось загрузить сведения. Можно продолжить вручную.")}
+        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+        val current=_productImport.value?.takeIf{it.requestId==id}?:return
+        _productImport.value=current.copy(title=result.title?:current.title,price=result.price?:current.price,photo=current.photo?:result.photo,loading=false,message=result.warning)
+    }
 
     // Form save state belongs to the ViewModel, not to a particular Activity composition.
-    fun saveForm(order: Order, editing: Boolean) {
+    fun saveForm(order: Order, editing: Boolean, importedPhoto:ByteArray?=null) {
         if (!_formSaving.compareAndSet(false, true)) return
         val complete: (Boolean) -> Unit = { ok ->
             if (ok) _savedForm.value = order.id
@@ -35,7 +102,7 @@ class Model(app: Application): AndroidViewModel(app) {
         }
         if (editing) edit(order.id, order.name, order.store, order.price, order.deadline,
             order.point, order.link, order.note, order.category, order.pointLat, order.pointLon, complete)
-        else add(order, complete)
+        else addWithPhoto(order,importedPhoto,complete)
     }
 
     fun consumeSavedForm(id: String) { _savedForm.compareAndSet(id, null) }
@@ -51,6 +118,7 @@ class Model(app: Application): AndroidViewModel(app) {
         afterCommit: () -> Unit = {},
         block: suspend () -> Unit
     ) = viewModelScope.launch {
+        reminderMutationMutex.withLock {
         try {
             db.withTransaction { block() }
         } catch (e: CancellationException) {
@@ -58,7 +126,7 @@ class Model(app: Application): AndroidViewModel(app) {
         } catch (e: Exception) {
             completed?.invoke(false)
             reportError(if (e is IllegalArgumentException) e.message ?: "Проверьте введённые данные" else "Не удалось сохранить данные. Попробуйте снова.")
-            return@launch
+            return@withLock
         }
         completed?.invoke(true)
         try {
@@ -68,6 +136,7 @@ class Model(app: Application): AndroidViewModel(app) {
             throw e
         } catch (e: Exception) {
             reportError("Данные сохранены, но не удалось обновить напоминания")
+        }
         }
     }
     private suspend fun log(id: String, label: String) = dao.history(History(uid(),id,LocalDateTime.now().toString(),label))
@@ -87,7 +156,8 @@ class Model(app: Application): AndroidViewModel(app) {
         if(kind=="point"&&lat!=null&&lon!=null)dao.updatePoint(parent.trim(),value.trim(),lat,lon)
     }
     fun forgetCatalog(id:String)=change{dao.forget(id)}
-    fun add(order: Order,completed:((Boolean)->Unit)?=null) = change(completed) {
+    fun add(order: Order,completed:((Boolean)->Unit)?=null) = addWithPhoto(order,null,completed)
+    private fun addWithPhoto(order:Order,photo:ByteArray?,completed:((Boolean)->Unit)?=null)=change(completed) {
         validateNewOrder(order)
         val existing = dao.get(order.id)
         if (existing != null) {
@@ -95,6 +165,7 @@ class Model(app: Application): AndroidViewModel(app) {
             return@change
         }
         dao.insert(order)
+        if(photo!=null)PrivateFiles.attachPreparedPhoto(dao,order.id,photo)
         rememberValues(order)
         if (order.paid > 0) dao.transaction(Transaction(uid(),order.id,today(),order.paid))
         log(order.id,"Добавлен: ${order.state.label}")
@@ -109,9 +180,10 @@ class Model(app: Application): AndroidViewModel(app) {
         dao.update(updated);rememberValues(updated)
         log(id,"Изменены сведения")
     }
-    fun act(id: String, event: String, deadline: String? = null, amount: Long? = null) = change(afterCommit={cancelReminder(id)}) {
+    fun act(id: String, event: String, deadline: String? = null, amount: Long? = null, expectedState:Status?=null) = change(afterCommit={cancelReminder(id)}) {
         deadline?.let{LocalDate.parse(it)}
         val o = dao.get(id) ?: error("Заказ не найден")
+        if(expectedState!=null&&o.state!=expectedState)return@change
         require(event !in listOf("return","reopen") || !o.returned && !o.cancelled) { "Возврат уже завершён" }
         val state = nextStatus(o.state,event,o.paid)
         val expected = if(state == Status.REFUND) (amount ?: o.paid) else 0L
@@ -154,6 +226,7 @@ class Model(app: Application): AndroidViewModel(app) {
         dao.clearCatalog()
     }
     fun photos(id:String)=dao.photos(id)
+    internal fun cover(id:String)=dao.cover(id)
     fun addPhoto(id:String,uri:android.net.Uri)=viewModelScope.launch{
         try{PrivateFiles.addPhoto(getApplication(),id,uri)}catch(e:kotlinx.coroutines.CancellationException){throw e}catch(e:Exception){reportError("Не удалось добавить фото: "+(e.message?:"ошибка"))}
     }

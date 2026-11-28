@@ -20,6 +20,12 @@ class Preferences(private val context:Context) {
         private set
     var overdue by mutableStateOf(prefs.getBoolean("overdue",true))
         private set
+    var tutorialSeen by mutableStateOf(prefs.getBoolean("tutorial_seen_v1",false))
+        private set
+    fun finishTutorial(){tutorialSeen=true;prefs.edit().putBoolean("tutorial_seen_v1",true).apply()}
+    var onlineProductImport by mutableStateOf(prefs.getBoolean("online_product_import_v1",false))
+        private set
+    fun onlineProductImport(value:Boolean){onlineProductImport=value;prefs.edit().putBoolean("online_product_import_v1",value).apply()}
     val notificationAsked get()=prefs.getBoolean("notificationAsked",false)
     fun markNotificationAsked(){prefs.edit().putBoolean("notificationAsked",true).apply()}
     // Age declaration and consent are independent, local and versioned.
@@ -45,5 +51,5 @@ class Preferences(private val context:Context) {
     fun leadDays(value:Int){leadDays=value.coerceIn(0,7);prefs.edit().putInt("leadDays",leadDays).apply();Reminders.enqueue(context)}
     fun overdue(value:Boolean){overdue=value;prefs.edit().putBoolean("overdue",value).apply();Reminders.enqueue(context)}
     init { prefs.edit().remove("personalizedAds").remove("adsEnabled").apply() }
-    private fun clear(){context.getSystemService(NotificationManager::class.java).cancelAll()}
+    private fun clear(){synchronized(reminderNotificationMonitor){context.getSystemService(NotificationManager::class.java)?.cancelAll()}}
 }

@@ -27,6 +27,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -49,18 +50,22 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-@Composable internal fun Orders(orders:List<Order>,open:(Order)->Unit,received:(Order)->Unit,searchVisible:Boolean,addOrder:()->Unit,personalizedAds:Boolean,adsReady:Boolean){
+@Composable internal fun Orders(orders:List<Order>,open:(Order)->Unit,quickChange:(Order,String)->Unit,searchVisible:Boolean,addOrder:()->Unit,personalizedAds:Boolean,adsReady:Boolean,coverProvider:((String)->kotlinx.coroutines.flow.Flow<Attachment?>)?=null){
     var filter by rememberSaveable{mutableStateOf("Активные")}
     var query by rememberSaveable{mutableStateOf("")}
     var shop by rememberSaveable{mutableStateOf("")}
     var category by rememberSaveable{mutableStateOf("")}
     var grouped by rememberSaveable{mutableStateOf(false)}
     var confirmId by rememberSaveable{mutableStateOf<String?>(null)}
+    fun quick(o:Order){
+        val event=quickOrderEvent(o.state)?:return
+        if(event=="received")confirmId=o.id else quickChange(o,event)
+    }
     LaunchedEffect(searchVisible){if(!searchVisible)query=""}
     val active=orders.filterNot{it.state.archived}
     val waiting=active.filter{it.state==Status.REFUND}.sumOf{remaining(it.expectedRefund,it.receivedRefund)}
     val visible=orders.filter{when(filter){"Активные"->!it.state.archived;"История"->it.state.archived;"В пути"->it.state==Status.TRANSIT;"Можно забрать"->it.state==Status.READY;"Возвраты"->it.state in listOf(Status.REFUND,Status.RETURN_PLANNED);else->true}}.filter{(it.name+" "+it.store+" "+it.point+" "+it.category).contains(query,true)&&(shop.isBlank()||it.store==shop)&&(category.isBlank()||it.category==category)}.sortedWith(compareBy<Order>{it.state.archived}.thenBy{orderPriority(it.state,it.deadline?.let{d->LocalDate.parse(d)},LocalDate.now())}.thenBy{it.deadline?:"9999"}.thenByDescending{it.created})
-    LazyColumn(Modifier.fillMaxSize().testTag("orders_list"),contentPadding=PaddingValues(start=UiSpacing.Page,top=UiSpacing.Page,end=UiSpacing.Page,bottom=UiSpacing.Page+72.dp),verticalArrangement=Arrangement.spacedBy(UiSpacing.Block)){
+    LazyColumn(Modifier.fillMaxSize().padding(bottom=72.dp).testTag("orders_list"),contentPadding=PaddingValues(start=UiSpacing.Page,top=UiSpacing.Page,end=UiSpacing.Page,bottom=UiSpacing.Page),verticalArrangement=Arrangement.spacedBy(UiSpacing.Block)){
         item{OrderOverview(active,waiting,{filter="Можно забрать";shop="";category=""},{filter="Возвраты";shop="";category=""})}
         if(searchVisible)item{OutlinedTextField(query,{query=it},Modifier.fillMaxWidth(),singleLine=true,placeholder={Text("Товар, магазин или ПВЗ")},leadingIcon={Icon(Icons.Default.Search,null)},shape=RoundedCornerShape(UiSpacing.CardRadius))}
         item{Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(UiSpacing.Related)){listOf("Активные","В пути","Можно забрать","Возвраты","История","Все").forEach{FilterChip(selected=filter==it,onClick={filter=it},label={Text(it)})}}}
@@ -75,15 +80,21 @@ import java.util.Locale
         if(grouped){
             visible.groupBy{if(it.point.isBlank())"Пункт не указан" else it.store+" · "+it.point}.forEach{(title,group)->
                 item(key="group:"+title){Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(UiSpacing.Tight)){Text(title,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold);Text("Можно забрать: "+group.count{it.state==Status.READY},style=MaterialTheme.typography.bodySmall)}}
-                items(group,key={it.id}){o->OrderCard(o,if(o.state==Status.READY){{confirmId=o.id}}else null){open(o)}}
+                items(group,key={it.id}){o->OrderCardWithCover(o,if(quickOrderEvent(o.state)!=null){{quick(o)}}else null,coverProvider){open(o)}}
             }
-        }else items(visible,key={it.id}){o->OrderCard(o,if(o.state==Status.READY){{confirmId=o.id}}else null){open(o)}}
+        }else items(visible,key={it.id}){o->OrderCardWithCover(o,if(quickOrderEvent(o.state)!=null){{quick(o)}}else null,coverProvider){open(o)}}
 
     }
-    val pending=orders.firstOrNull{it.id==confirmId}
-    if(pending!=null)AlertDialog(onDismissRequest={confirmId=null},title={Text("Заказ получен?")},text={Text(pending.name)},confirmButton={Button(colors=actionButtonColors(ActionTone.DELIVERY),onClick={received(pending);confirmId=null}){Text("Забрал")}},dismissButton={TextButton(onClick={confirmId=null}){Text("Отмена")}})
+    val pending=orders.firstOrNull{it.id==confirmId&&it.state==Status.READY}
+    LaunchedEffect(confirmId,pending?.id){if(confirmId!=null&&pending==null)confirmId=null}
+    if(pending!=null)AlertDialog(onDismissRequest={confirmId=null},title={Text("Заказ получен?")},text={Text(pending.name)},confirmButton={Button(colors=actionButtonColors(ActionTone.DELIVERY),onClick={quickChange(pending,"received");confirmId=null}){Text("Забрал")}},dismissButton={TextButton(onClick={confirmId=null}){Text("Отмена")}})
 }
-@Composable internal fun OrderCard(o:Order,quick:(()->Unit)?=null,open:()->Unit){
+@Composable private fun OrderCardWithCover(o:Order,quick:(()->Unit)?,provider:((String)->kotlinx.coroutines.flow.Flow<Attachment?>)?,open:()->Unit){
+    val flow=remember(o.id,provider){provider?.invoke(o.id)}
+    val cover=if(flow!=null)flow.collectAsStateWithLifecycle(initialValue=null).value else null
+    OrderCard(o,quick,cover,open)
+}
+@Composable internal fun OrderCard(o:Order,quick:(()->Unit)?=null,cover:Attachment?=null,open:()->Unit){
     val date=o.deadline?.let{LocalDate.parse(it)}
     val days=date?.let{java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(),it)}
     val overdue=isOverdue(o.state,date,LocalDate.now())
@@ -92,7 +103,8 @@ import java.util.Locale
     OutlinedCard(onClick=open,modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(UiSpacing.CardRadius),colors=CardDefaults.outlinedCardColors(containerColor=MaterialTheme.colorScheme.surface),border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant)){
         Column(Modifier.padding(UiSpacing.Card),verticalArrangement=Arrangement.spacedBy(UiSpacing.Block)){
             Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(UiSpacing.Block)){
-                StoreTile(o.store)
+                val coverBitmap=remember(cover?.id,cover?.jpeg){cover?.jpeg?.let{android.graphics.BitmapFactory.decodeByteArray(it,0,it.size,android.graphics.BitmapFactory.Options().apply{inSampleSize=4})?.asImageBitmap()}}
+                if(coverBitmap==null)StoreTile(o.store)else Image(coverBitmap,"Фото товара",Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)),contentScale=androidx.compose.ui.layout.ContentScale.Crop)
                 Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(UiSpacing.Tight)){
                     Text(o.store,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(o.name,fontWeight=FontWeight.SemiBold,style=MaterialTheme.typography.titleMedium,maxLines=2,overflow=TextOverflow.Ellipsis)
@@ -109,7 +121,12 @@ import java.util.Locale
                 Icon(Icons.Default.Schedule,null,Modifier.size(16.dp),tint=statusColor)
                 Text(when{overdue->"Срок истёк · "+dateText(o.deadline);days==0L->(o.state.deadlineLabel?:"Срок")+": сегодня";days==1L->(o.state.deadlineLabel?:"Срок")+": завтра";else->(o.state.deadlineLabel?:"Срок")+": "+dateText(o.deadline)},color=statusColor,style=MaterialTheme.typography.bodySmall)
             }
-            if(quick!=null)OrderAction("Забрал заказ",Icons.Default.Check,ActionTone.DELIVERY,click=quick)
+            if(quick!=null)when(o.state){
+                Status.TRANSIT->OrderAction("Прибыл в ПВЗ",Icons.Default.Inventory2,ActionTone.DELIVERY,Modifier.testTag("quick_arrived_"+o.id),click=quick)
+                Status.READY->OrderAction("Забрал заказ",Icons.Default.Check,ActionTone.DELIVERY,Modifier.testTag("quick_received_"+o.id),click=quick)
+                Status.RECEIVED->OrderAction("Оставить себе",Icons.Default.Check,ActionTone.DELIVERY,Modifier.testTag("quick_keep_"+o.id),click=quick)
+                else->Unit
+            }
         }
     }
 }

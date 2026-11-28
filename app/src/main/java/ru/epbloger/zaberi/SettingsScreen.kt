@@ -61,6 +61,8 @@ import java.util.Locale
                         Icon(Icons.Default.Inventory2,null,Modifier.size(38.dp));Column{Text("ЗАБЕРИ.",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold);Text("Все покупки под контролем",style=MaterialTheme.typography.bodySmall)}
                     }
                 }
+                SettingsLink(Icons.Default.HelpOutline,"Обучение","Как добавлять заказы через «Поделиться»"){open("Обучение")}
+                SettingsLink(Icons.Default.Share,"Автозаполнение товара","Загрузка цены и фотографии из карточки"){open("Автозаполнение товара")}
                 SettingsLink(Icons.Default.Notifications,"Уведомления","Сроки и конфиденциальность"){open("Уведомления")}
                 SettingsLink(Icons.Default.Palette,"Оформление","Светлая, тёмная и системная тема"){open("Оформление")}
                 SettingsLink(Icons.Default.Store,"Справочники","Магазины, категории и ПВЗ"){open("Справочники")}
@@ -68,6 +70,15 @@ import java.util.Locale
                 SettingsLink(Icons.Default.Gavel,"Юридическая информация","Конфиденциальность, условия и реклама"){open("Юридическая информация")}
                 SettingsLink(Icons.Default.Campaign,"Реклама","Информация о показах и данных"){open("Реклама")}
                 SettingsLink(Icons.Default.Info,"О приложении","Версия и обратная связь"){open("О приложении")}
+            }
+            "Автозаполнение товара"->{
+                Text("Цена и фото из магазина",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
+                Text("При импорте через «Поделиться» ЗАБЕРИ. может открыть общедоступную карточку товара и загрузить недостающую цену и фотографию. Запросы отправляются магазину и его сервису изображений; они получают IP-адрес и технические сведения. Вход в аккаунт не требуется.")
+                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
+                    Text("Автоматически дополнять карточки",Modifier.weight(1f))
+                    Switch(preferences.onlineProductImport,{preferences.onlineProductImport(it)})
+                }
+                Text("Если автоматический запрос не удался, можно открыть публичную карточку во встроенном браузере и перенести доступные данные. Входить в аккаунт не нужно. Без интернета ручной учёт работает по-прежнему.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
             "Уведомления"->{
         Row(verticalAlignment=Alignment.CenterVertically){Text("Напоминания о сроках",Modifier.weight(1f));Switch(preferences.enabled,{preferences.enabled(it)})}
@@ -130,8 +141,11 @@ import java.util.Locale
         busy=true
         scope.launch{
             try{
-                when(kind){"export"->PrivateFiles.export(ctx,uri,pass);"restore"->PrivateFiles.restore(ctx,uri,pass);else->PrivateFiles.csv(ctx,uri)}
-                message=when(kind){"restore"->"Данные восстановлены";"export"->"Защищённая копия сохранена";else->"Таблица сохранена"}
+                message=when(kind){
+                    "export"->{PrivateFiles.export(ctx,uri,pass);"Защищённая копия сохранена"}
+                    "restore"->if(PrivateFiles.restore(ctx,uri,pass))"Данные восстановлены" else "Данные восстановлены, но не удалось обновить напоминания."
+                    else->{PrivateFiles.csv(ctx,uri);"Таблица сохранена"}
+                }
             }catch(e:kotlinx.coroutines.CancellationException){throw e}
             catch(e:Exception){message=if(kind=="restore")"Не удалось восстановить: проверьте пароль и файл. При ошибке проверки данные не заменяются." else "Не удалось сохранить файл."}
             finally{busy=false}

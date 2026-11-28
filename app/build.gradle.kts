@@ -24,8 +24,8 @@ android {
   minSdk = 26
   targetSdk = 35
   testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-  versionCode = 111
-  versionName = "1.0.3"
+  versionCode = 112
+  versionName = "1.1.0"
   buildConfigField("int","STORE_AGE",storeAge)
   buildConfigField("String","BANNER_ID","\""+configuredBannerId+"\"")
   buildConfigField("String","INTERSTITIAL_ID","\""+configuredInterstitialId+"\"")
@@ -47,6 +47,7 @@ android {
 dependencies {
  implementation("com.yandex.android:mobileads:8.7.0")
  implementation("com.squareup.okhttp3:okhttp:4.12.0")
+ implementation("org.jsoup:jsoup:1.18.3")
  implementation(platform("androidx.compose:compose-bom:2024.12.01"))
  implementation("androidx.compose.material3:material3")
  implementation("androidx.compose.material:material-icons-extended")

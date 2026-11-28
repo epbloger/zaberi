@@ -11,6 +11,8 @@ import android.util.Base64
 import androidx.room.withTransaction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -64,8 +66,8 @@ private fun readOrder(j:JSONObject):Order {
     return o
 }
 object PrivateFiles{
-    suspend fun addPhoto(context:Context,id:String,uri:Uri)=withContext(Dispatchers.IO){
-        val raw=context.contentResolver.openInputStream(uri)?.use{it.bounded(20*1024*1024)}?:error("Не удалось открыть изображение")
+    internal fun preparePhoto(raw:ByteArray):ByteArray {
+        require(raw.isNotEmpty()&&raw.size<=20*1024*1024){"Изображение слишком большое"}
         val bounds=BitmapFactory.Options().apply{inJustDecodeBounds=true};BitmapFactory.decodeByteArray(raw,0,raw.size,bounds)
         require(bounds.outWidth>0&&bounds.outHeight>0){"Неподдерживаемое изображение"}
         var sample=1
@@ -73,7 +75,7 @@ object PrivateFiles{
         val decoded=BitmapFactory.decodeByteArray(raw,0,raw.size,BitmapFactory.Options().apply{inSampleSize=sample})?:error("Не удалось открыть изображение")
         val bitmap=try{orientPhoto(decoded,raw)}catch(e:Exception){decoded.recycle();throw e}
         if(bitmap!==decoded)decoded.recycle()
-        val bytes=try{
+        return try{
             var result=ByteArray(0)
             for(quality in listOf(82,65,45,25)){
                 val out=ByteArrayOutputStream();check(bitmap.compress(Bitmap.CompressFormat.JPEG,quality,out));result=out.toByteArray()
@@ -81,11 +83,25 @@ object PrivateFiles{
             }
             require(result.size<=MAX_PHOTO){"Изображение слишком большое"};result
         }finally{bitmap.recycle()}
-        val db=ZaberiDb.get(context)
-        db.withTransaction{val dao=db.orders();require(dao.get(id)!=null);require(dao.photoCount(id)<5){"Не более пяти фото на заказ"};require(dao.photoBytes()+bytes.size<=20L*1024*1024){"Достигнут общий лимит фотографий (20 МБ)"};dao.photo(Attachment(uid(),id,bytes))}
     }
-    suspend fun export(context:Context,uri:Uri,password:String)=withContext(Dispatchers.IO){
-        val db=ZaberiDb.get(context);val d=db.orders()
+    // The caller owns the Room transaction; imported photos are committed
+    // atomically with the new order, without a separate schema or file store.
+    internal suspend fun attachPreparedPhoto(dao:OrdersDao,id:String,bytes:ByteArray){
+        require(bytes.size in 1..MAX_PHOTO){"Изображение слишком большое"}
+        require(dao.get(id)!=null){"Заказ не найден"}
+        require(dao.photoCount(id)<5){"Не более пяти фото на заказ"}
+        require(dao.photoBytes()+bytes.size<=20L*1024*1024){"Достигнут общий лимит фотографий (20 МБ). Уберите фото и повторите сохранение."}
+        dao.photo(Attachment(uid(),id,bytes))
+    }
+    suspend fun addPhoto(context:Context,id:String,uri:Uri)=withContext(Dispatchers.IO){
+        val raw=context.contentResolver.openInputStream(uri)?.use{it.bounded(20*1024*1024)}?:error("Не удалось открыть изображение")
+        val bytes=preparePhoto(raw)
+        val db=ZaberiDb.get(context)
+        db.withTransaction{attachPreparedPhoto(db.orders(),id,bytes)}
+    }
+    suspend fun export(context:Context,uri:Uri,password:String)=exportFrom(context,uri,password,ZaberiDb.get(context))
+    internal suspend fun exportFrom(context:Context,uri:Uri,password:String,db:ZaberiDb)=withContext(Dispatchers.IO){
+        val d=db.orders()
         val snapshot=db.withTransaction{
             require(d.photoBytes()<=20L*1024*1024){"Слишком много фотографий для одной резервной копии"}
             JSONObject().put("version",4).put("orders",array(d.all().map(::orderJson)))
@@ -97,7 +113,20 @@ object PrivateFiles{
         val bytes=encryptBackup(snapshot.toString().toByteArray(Charsets.UTF_8),password)
         context.contentResolver.openOutputStream(uri,"wt")?.use{it.write(bytes)}?:error("Не удалось записать файл")
     }
-    suspend fun restore(context:Context,uri:Uri,password:String)=withContext(Dispatchers.IO){
+    // A successful database restore stays successful even if Android refuses
+    // to reschedule notifications. Return false only for that secondary failure.
+    suspend fun restore(context:Context,uri:Uri,password:String):Boolean=withContext(Dispatchers.IO){
+        reminderMutationMutex.withLock{
+            restoreInto(context,uri,password,ZaberiDb.get(context))
+            try{
+                context.getSystemService(android.app.NotificationManager::class.java)?.cancelAll()
+                context.getSharedPreferences("reminders",Context.MODE_PRIVATE).edit().clear().apply()
+                Reminders.enqueue(context)
+                true
+            }catch(e:CancellationException){throw e}catch(_:Exception){false}
+        }
+    }
+    internal suspend fun restoreInto(context:Context,uri:Uri,password:String,db:ZaberiDb)=withContext(Dispatchers.IO){
         val data=context.contentResolver.openInputStream(uri)?.use{it.bounded(MAX_FILE)}?:error("Не удалось открыть файл")
         val json=JSONObject(decryptBackup(data,password).toString(Charsets.UTF_8));require(json.getInt("version") in 2..4)
         val orders=json.getJSONArray("orders").objects(10000).map(::readOrder)
@@ -119,13 +148,10 @@ object PrivateFiles{
         require(catalog.map{Triple(it.kind,it.parent,it.value)}.toSet().size==catalog.size)
         val groups=transactions.groupBy{it.orderId}
         orders.forEach{o->val t=groups[o.id].orEmpty();require(t.filter{it.amount>0}.sumOf{it.amount}==o.paid&&-t.filter{it.amount<0}.sumOf{it.amount}==o.receivedRefund)}
-        val db=ZaberiDb.get(context);val d=db.orders()
+        val d=db.orders()
         db.withTransaction{d.clearOrders();d.clearCatalog();orders.forEach{d.insert(it)};transactions.forEach{d.transaction(it)};histories.forEach{d.history(it)};photos.forEach{d.photo(it)};catalog.forEach{d.remember(it)}
             if(json.optInt("version")==2)orders.forEach{o->d.remember(CatalogEntry(uid(),"store","",o.store));if(o.point.isNotBlank())d.remember(CatalogEntry(uid(),"point",o.store,o.point));if(o.category.isNotBlank())d.remember(CatalogEntry(uid(),"category","",o.category))}
         }
-        context.getSystemService(android.app.NotificationManager::class.java).cancelAll()
-        context.getSharedPreferences("reminders",Context.MODE_PRIVATE).edit().clear().apply()
-        Reminders.enqueue(context)
     }
     suspend fun csv(context:Context,uri:Uri)=withContext(Dispatchers.IO){
         val db=ZaberiDb.get(context);val d=db.orders()
