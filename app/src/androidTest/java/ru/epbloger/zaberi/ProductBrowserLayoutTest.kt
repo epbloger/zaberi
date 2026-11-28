@@ -5,6 +5,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
 import androidx.compose.ui.unit.dp
 import android.webkit.WebView
+import android.os.SystemClock
+import android.view.MotionEvent
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import java.util.concurrent.atomic.AtomicReference
@@ -39,6 +42,8 @@ class ProductBrowserLayoutTest{
         assertTrue("Action must be above browser content",bounds.bottom<=browser.boundsInRoot.top+2)
         assertTrue("Action must have a full touch target",bounds.height>=with(compose.density){47.dp.toPx()})
         compose.onNodeWithTag("close_product_browser").assertIsDisplayed()
+        var tapX=0f
+        var tapY=0f
         compose.runOnIdle{
             val view=requireNotNull(web.get())
             val root=view.rootView
@@ -47,14 +52,26 @@ class ProductBrowserLayoutTest{
             val insets=ViewCompat.getRootWindowInsets(root)?.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             val originX=webLocation[0]-browser.boundsInRoot.left
             val originY=webLocation[1]-browser.boundsInRoot.top
+            tapX=originX+bounds.center.x
+            tapY=originY+bounds.center.y
             assertTrue("Action must clear status bar",originY+bounds.top>=rootLocation[1]+(insets?.top?:0)-2)
             assertTrue("Action must clear navigation bar",originY+bounds.bottom<=rootLocation[1]+root.height-(insets?.bottom?:0)+2)
             assertTrue("Action must clear left system inset",originX+bounds.left>=rootLocation[0]+(insets?.left?:0)-2)
             assertTrue("Action must clear right system inset",originX+bounds.right<=rootLocation[0]+root.width-(insets?.right?:0)+2)
         }
         compose.waitUntil(20000){runCatching{button.assertIsEnabled();true}.getOrDefault(false)}
-        button.performTouchInput{click()}
-        compose.waitUntil(20000){result.get()!=null}
+        val instrumentation=InstrumentationRegistry.getInstrumentation()
+        val down=SystemClock.uptimeMillis()
+        for(action in listOf(MotionEvent.ACTION_DOWN,MotionEvent.ACTION_UP)){
+            val event=MotionEvent.obtain(down,SystemClock.uptimeMillis(),action,tapX,tapY,0)
+            try{instrumentation.sendPointerSync(event)}finally{event.recycle()}
+        }
+        try{compose.waitUntil(20000){result.get()!=null}}
+        catch(e:ComposeTimeoutException){
+            val diagnostic=compose.onAllNodesWithTag("product_browser_message").fetchSemanticsNodes()
+                .joinToString{it.config.toString()}
+            throw AssertionError("Rendered capture did not return: "+diagnostic,e)
+        }
         assertEquals(129900L,result.get()?.price)
         assertEquals("Чайник",result.get()?.title)
     }

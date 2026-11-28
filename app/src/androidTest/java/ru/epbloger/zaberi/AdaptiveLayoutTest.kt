@@ -181,8 +181,13 @@ class AdaptiveLayoutTest {
             val list=compose.onNodeWithTag("orders_list")
             list.performScrollToNode(hasTestTag("quick_arrived_"+id))
             assertInsideWindow("quick_arrived_"+id)
-            compose.onNodeWithTag("quick_arrived_"+id).performTouchInput{click()}
-            compose.waitUntil(15000){runBlocking{dao.get(id)?.state==Status.READY}}
+            val quick=compose.onNodeWithTag("quick_arrived_"+id)
+            val fab=compose.onNodeWithTag("new_order").fetchSemanticsNode().boundsInRoot
+            val target=quick.fetchSemanticsNode().boundsInRoot
+            assertTrue("Quick action must not be covered by Add order",target.bottom<=fab.top+2)
+            quick.performTouchInput{click()}
+            try{compose.waitUntil(15000){runBlocking{dao.get(id)?.state==Status.READY}}}
+            catch(e:ComposeTimeoutException){throw AssertionError("Arrival tap failed; state="+runBlocking{dao.get(id)?.state},e)}
             list.assertExists()
             list.performScrollToNode(hasTestTag("quick_received_"+id))
             compose.onNodeWithTag("quick_received_"+id).performTouchInput{click()}

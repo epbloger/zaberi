@@ -79,7 +79,7 @@ internal val readCardScript="""
       }
     }
   }
-  return JSON.stringify({html:parts.join('\n'),prices:priceText.join('\n'),scopedPrices:scopedPrices});
+  return {html:parts.join('\n'),prices:priceText.join('\n'),scopedPrices:scopedPrices};
 })()
 """.trimIndent()
 
@@ -153,14 +153,18 @@ internal val readCardScript="""
             message="Дождитесь открытия карточки.";return
         }
         busy=true
+        message="Читаем данные карточки…"
         web.evaluateJavascript(readCardScript){raw->
             if(!active)return@evaluateJavascript
             scope.launch{
                 try{
                     if(web.url?.let{allowed(it)}!=page)error("Page changed")
-                    val json=JSONTokener(raw).nextValue() as? String?:error("No page")
-                    require(json.length<=2000000)
-                    val data=JSONObject(json)
+                    require(raw!=null&&raw.length<=4000000)
+                    val data=when(val decoded=JSONTokener(raw).nextValue()){
+                        is JSONObject->decoded
+                        is String->JSONObject(decoded)
+                        else->error("Empty capture")
+                    }
                     val explicit=data.getString("prices")
                     val scoped=data.optJSONArray("scopedPrices")
                     val scopedValues=(0 until minOf(scoped?.length()?:0,32))
@@ -179,7 +183,10 @@ internal val readCardScript="""
                         message="Цена не распознана. Укажите её по карточке или повторите чтение."
                     }else apply(combined)
                 }catch(e:kotlinx.coroutines.CancellationException){throw e}
-                catch(_:Exception){if(active)message="Не удалось прочитать карточку. Попробуйте после загрузки."}
+                catch(e:Exception){if(active){
+                    android.util.Log.w("ProductImport","Rendered capture failed: "+e.javaClass.simpleName)
+                    message="Не удалось прочитать карточку. Попробуйте после загрузки."
+                }}
                 finally{if(active)busy=false}
             }
         }
@@ -206,7 +213,7 @@ internal val readCardScript="""
                     }
                 }
                 if(busy)LinearProgressIndicator(Modifier.fillMaxWidth())
-                Text(message,style=MaterialTheme.typography.bodySmall,maxLines=3)
+                Text(message,modifier=Modifier.testTag("product_browser_message"),style=MaterialTheme.typography.bodySmall,maxLines=3)
                 AndroidView(factory={web},modifier=Modifier.weight(1f).fillMaxWidth().testTag("product_browser"))
             }
         }
