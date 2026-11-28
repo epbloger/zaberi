@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import okhttp3.HttpUrl
 import org.json.JSONObject
@@ -166,7 +167,10 @@ internal val readCardScript="""
         message="Читаем данные карточки…"
         web.evaluateJavascript(readCardScript){raw->
             if(!active)return@evaluateJavascript
-            scope.launch{
+            // WebView must be accessed only on Android's main looper, including
+            // after fromRenderedPage returns from Dispatchers.IO. The composition
+            // scope's dispatcher is not necessarily the WebView's UI dispatcher.
+            scope.launch(Dispatchers.Main.immediate){
                 var stage="navigation"
                 try{
                     if(web.url?.let{allowed(it)}!=page)error("Page changed")
@@ -201,7 +205,8 @@ internal val readCardScript="""
                     }else apply(combined)
                 }catch(e:kotlinx.coroutines.CancellationException){throw e}
                 catch(e:Exception){if(active){
-                    val diagnostic=stage+":"+e.javaClass.simpleName
+                    val frame=e.stackTrace.firstOrNull()?.let{it.className+"."+it.methodName+":"+it.lineNumber}.orEmpty()
+                    val diagnostic=stage+":"+e.javaClass.simpleName+":"+frame
                     captureDiagnostic?.invoke(diagnostic)
                     android.util.Log.w("ProductImport","Rendered capture failed: "+diagnostic)
                     message="Не удалось прочитать карточку. Попробуйте после загрузки."
