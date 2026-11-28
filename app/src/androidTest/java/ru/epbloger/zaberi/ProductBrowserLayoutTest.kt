@@ -23,14 +23,19 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class ProductBrowserLayoutTest{
     @get:Rule val compose=createComposeRule()
-    @Test fun browserPrimaryActionIsAboveWebContentAndReadsRenderedPrice(){
+    @Test fun browserPrimaryActionIsAboveWebContentAndReadsRenderedPrice()=verifyRenderedPrice(
+        SharedProductSeed("","Ozon","https://www.ozon.ru/product/test-123/",null),
+        """<h1>Чайник</h1><div data-widget="webPrice"><div>999 ₽ с картой</div><div><span>1 299 ₽</span><span> без Ozon Карты</span><del>2 000 ₽</del></div></div>"""
+    )
+    @Test fun wildberriesReadsRegularPriceInsteadOfWalletPrice()=verifyRenderedPrice(
+        SharedProductSeed("","Wildberries","https://www.wildberries.ru/catalog/123/detail.aspx",null),
+        """<h1>Чайник</h1><div class="priceBlock"><span class="priceBlockWalletPrice_x">999 ₽</span><span class="priceBlockFinalPrice_x">1 299 ₽</span><del class="priceBlockOldPrice_x">2 000 ₽</del></div>"""
+    )
+    private fun verifyRenderedPrice(seed:SharedProductSeed,body:String){
         val result=AtomicReference<ProductLookup?>()
         val web=AtomicReference<WebView>()
         val captureError=AtomicReference<String?>()
-        val seed=SharedProductSeed("","Ozon","https://www.ozon.ru/product/test-123/",null)
-        val fixture="""<html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>
-          <h1>Чайник</h1><div data-widget="webPrice"><div>999 ₽ с картой</div><div><span>1 299 ₽</span><span> без Ozon Карты</span><del>2 000 ₽</del></div></div>
-          </body></html>"""
+        val fixture="""<html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>$body</body></html>"""
         compose.setContent{MaterialTheme{
             var open by remember{mutableStateOf(true)}
             if(open)ProductBrowserDialog(seed,false,true,{open=false},loadPage={view,url->

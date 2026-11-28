@@ -311,9 +311,17 @@ private suspend fun lookupWildberries(article:Long,needPhoto:Boolean):ProductLoo
     }
     val d=details.await()
     val (title,photo)=media.await()
+    val fallback=if(d?.price==null)optionalDownload{withTimeoutOrNull(6500){
+        val url=requireNotNull(publicProductUrl("https://www.wildberries.ru/catalog/$article/detail.aspx","Wildberries"))
+        val page=publicResponse(url,"Wildberries",false)
+        val html=page.bytes.toString(Charsets.UTF_8)
+        storefrontRegularPrice(html,page.url,"Wildberries")
+    }}else null
+    val price=d?.price?:fallback
     val message=if(d?.price!=null)"Обычная цена открытой карточки для Москвы (минимальная среди доступных вариантов). Проверьте размер, регион и скидки."
-        else "Магазин не предоставил однозначную цену."
-    ProductLookup(d?.title?:title,d?.price,photo,message+(if(needPhoto&&photo==null)" Главное фото недоступно." else ""))
+        else if(fallback!=null)"Обычная цена из карточки Wildberries. Проверьте размер и регион."
+        else "Магазин не предоставил однозначную цену. Откройте карточку для переноса."
+    ProductLookup(d?.title?:title,price,photo,message+(if(needPhoto&&photo==null)" Главное фото недоступно." else ""))
 }
 private fun rubleText(raw:String?):Long?{
     val value=raw?.replace('\u2009',' ')?.replace('\u202f',' ')?.replace('\u00a0',' ')?.trim()?:return null
@@ -368,6 +376,32 @@ private fun structuredVisiblePrice(doc:org.jsoup.nodes.Document):Long?{
     val explicit=texts.mapNotNull(::ordinaryPriceFromText).distinct()
     if(explicit.isNotEmpty())return explicit.singleOrNull()
     return texts.mapNotNull(::scopedProductPrice).distinct().singleOrNull()
+}
+// Generic offer metadata can represent a loyalty or wallet price.
+internal fun storefrontRegularPrice(html:String,page:HttpUrl,store:String):Long?{
+    val doc=Jsoup.parse(html,page.toString())
+    return when(store){
+        "Ozon"->{
+            val states=doc.select("[id^=state-webPrice-][data-state]").take(8)
+            val prices=states.mapNotNull{element->runCatching{
+                val state=JSONObject(element.attr("data-state"))
+                fun value(key:String):Long?=rubleText(state.string(key))?:explicitRuble(state.string(key),state.string("priceCurrency")?:state.string("currency"))
+                // priceWithoutCard is explicit; webPrice.price is the ordinary
+                // field in the supported format, not cardPrice or originalPrice.
+                if(state.has("priceWithoutCard"))value("priceWithoutCard") else value("price")
+            }.getOrNull()}
+            prices.distinct().singleOrNull()?.takeIf{prices.size==states.size&&it>0}
+        }
+        "Wildberries"->doc.select("[class*=priceBlockFinalPrice],.price-block__final-price").take(16).filter{element->
+            (sequenceOf(element)+element.parents().asSequence()).none{p->
+                p.hasAttr("hidden")||p.attr("aria-hidden")=="true"||
+                    p.attr("class").contains("WalletPrice",true)||p.attr("class").contains("wallet-price",true)||
+                    p.attr("class").contains("OldPrice",true)||p.tagName() in setOf("del","s","strike")||
+                    p.attr("style").contains("line-through",true)||p.attr("style").replace(" ","").contains("display:none",true)
+            }
+        }.mapNotNull{scopedProductPrice(it.text())}.distinct().singleOrNull()
+        else->null
+    }
 }
 internal fun parseProductMetadata(html:String,page:HttpUrl,store:String):ProductMetadata{
     val schema=parseSchemaMetadata(html,page,store)
@@ -431,7 +465,11 @@ internal fun parseRenderedProduct(html:String,visiblePriceText:String,page:HttpU
     val title=base.title?:heading?:return ProductMetadata(null,null,null)
     val rawImage=doc.select("meta[property=og:image:secure_url],meta[property=og:image]").firstOrNull()?.attr("content")
     val image=base.image?:rawImage?.let{page.resolve(it)?.toString()}?.let{publicImageUrl(it,store)?.toString()}
-    return ProductMetadata(title,ordinaryPriceFromText(visiblePriceText)?:base.price,image)
+    val price=when(store){
+        "Ozon","Wildberries"->ordinaryPriceFromText(visiblePriceText)?:storefrontRegularPrice(html,page,store)
+        else->ordinaryPriceFromText(visiblePriceText)?:base.price
+    }
+    return ProductMetadata(title,price,image)
 }
 internal object ProductImporter {
     suspend fun fromRenderedPage(html:String,priceText:String,page:HttpUrl,store:String,needPhoto:Boolean):ProductLookup=withContext(Dispatchers.IO){
@@ -452,7 +490,9 @@ internal object ProductImporter {
             if(seed.store=="Wildberries")wildberriesArticle(url.encodedPath)?.let{return@withContext lookupWildberries(it,needPhoto)}
             val page=withTimeoutOrNull(11000){publicResponse(url,seed.store,false)}
                 ?:return@withContext ProductLookup(null,null,null,"Магазин не ответил вовремя. Можно продолжить вручную.")
-            val metadata=parseProductMetadata(page.bytes.toString(Charsets.UTF_8),page.url,seed.store)
+            val html=page.bytes.toString(Charsets.UTF_8)
+            val parsed=parseProductMetadata(html,page.url,seed.store)
+            val metadata=if(seed.store=="Ozon")parsed.copy(price=storefrontRegularPrice(html,page.url,seed.store))else parsed
             val photo=if(needPhoto&&metadata.image!=null)try{
                 val image=publicImageUrl(metadata.image,seed.store)?:error("Unsupported image")
                 withTimeoutOrNull(7000){PrivateFiles.preparePhoto(publicResponse(image,seed.store,true).bytes)}

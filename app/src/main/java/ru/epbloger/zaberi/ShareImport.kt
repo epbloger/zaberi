@@ -54,7 +54,9 @@ internal fun sharedProductSeed(text:String):SharedProductSeed {
     val title=clean.lineSequence().map{rublePrice.replace(it,"").trim(' ',':','-','–','—','\t')}
         .firstOrNull{it.isNotBlank()&&it.any(Char::isLetter)&&!it.matches(Regex("(?i)(цена|стоимость|поделиться|ссылка|посмотри(?:те)?(?: товар)?|смотри(?:те)?(?: товар)?|товар|купить)[!:. ]*"))}
         ?.take(120).orEmpty()
-    return SharedProductSeed(title,detectStore(link).orEmpty(),link,ordinaryPriceFromText(clean)?:if(ambiguous)null else price)
+    val store=detectStore(link).orEmpty()
+    val conditional=store in setOf("Ozon","Wildberries")&&Regex("(?iu)с\\s+(?:картой|кошельком|(?:ozon|озон|wb)\\s+картой)|по\\s+карте|старая\\s+цена|до\\s+скидки|в\\s+месяц|рассроч|частями").containsMatchIn(clean)
+    return SharedProductSeed(title,store,link,ordinaryPriceFromText(clean)?:if(ambiguous||conditional)null else price)
 }
 internal fun combinedSharedText(text:String,subject:String):String {
     val bounded=text.take(MAX_SHARED_TEXT)

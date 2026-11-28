@@ -82,7 +82,7 @@ import java.util.Locale
     LaunchedEffect(sharedState?.title,sharedState?.price,sourceChanged){
         if(old==null&&!sourceChanged){
             if(!nameTouched)sharedState?.title?.let{name=it}
-            if(!priceTouched&&price.isBlank())sharedState?.price?.let{price=number(it)}
+            if(!priceTouched&&(price.isBlank()||seed.store in setOf("Ozon","Wildberries")))sharedState?.price?.let{price=number(it)}
         }
     }
     val importedPhoto=sharedState?.photo?.takeUnless{photoRemoved||sourceChanged}
@@ -94,8 +94,9 @@ import java.util.Locale
     val focus=LocalFocusManager.current
     val keyboard=LocalSoftwareKeyboardController.current
     if(showProductBrowser&&renderedLookup!=null&&!sourceChanged&&sharedState!=null){
-        ProductBrowserDialog(seed,sharedState.photo==null&&!photoRemoved,price.isBlank()&&!priceTouched,{showProductBrowser=false}){result->
+        ProductBrowserDialog(seed,sharedState.photo==null&&!photoRemoved,!priceTouched&&(price.isBlank()||seed.store in setOf("Ozon","Wildberries")),{showProductBrowser=false}){result->
             showProductBrowser=false
+            if(!priceTouched&&seed.store in setOf("Ozon","Wildberries"))result.price?.let{price=number(it)}
             renderedLookup(result)
         }
     }
@@ -133,7 +134,7 @@ import java.util.Locale
                         if(!sourceChanged){
                             sharedState.message?.let{Text(it,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
                             if(!sharedState.loading&&enableLookup!=null&&publicProductUrl(seed.link,seed.store)!=null&&
-                                (price.isBlank()||name.isBlank()||sharedState.photo==null&&!photoRemoved)){
+                                (price.isBlank()||name.isBlank()||sharedState.photo==null&&!photoRemoved||seed.store in setOf("Ozon","Wildberries"))){
                                 Text("Можно дополнить заказ из открытой карточки. Магазин и сервис изображений получат сетевой запрос. Без входа в аккаунт.",style=MaterialTheme.typography.bodySmall)
                                 OutlinedButton(onClick=enableLookup,enabled=!saving,modifier=Modifier.fillMaxWidth().testTag("import_lookup")){
                                     Text(if(sharedState.attempted)"Повторить загрузку" else "Загрузить цену и фото")

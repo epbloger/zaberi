@@ -39,6 +39,11 @@ class ShareImportTest {
         assertNull(ordinaryPriceFromText("1\u2009882\u2009₽ 3\u2009282\u2009₽\nС другими банками"))
         assertNull(ordinaryPriceFromText("100 ₽ без Сплита"))
     }
+    @Test fun conditionalSharePriceCannotMasqueradeAsRegular(){
+        assertNull(sharedProductSeed("Чайник\n999 ₽ с картой\nhttps://www.ozon.ru/product/item-123/").price)
+        assertNull(sharedProductSeed("Чайник\n999 ₽ с кошельком\nhttps://www.wildberries.ru/catalog/123/detail.aspx").price)
+        assertEquals(129900L,sharedProductSeed("Чайник\n1 299 ₽ без карты\nhttps://www.ozon.ru/product/item-123/").price)
+    }
     @Test fun scopedCurrentPriceIsNotConfusedWithOtherAmounts(){
         assertEquals(129900L,scopedProductPrice("1 299 ₽"))
         assertEquals(129900L,scopedProductPrice("999 ₽ с картой\n1 299 ₽ без Ozon Карты"))

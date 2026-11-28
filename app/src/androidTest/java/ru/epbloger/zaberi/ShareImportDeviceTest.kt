@@ -106,6 +106,19 @@ class ShareImportDeviceTest {
         assertEquals(129900L,p.price)
         assertEquals("https://ir.ozone.ru/s3/cover.jpg",p.image)
     }
+    @Test fun ozonAndWbNeverUseGenericWalletOrOldPriceAsRegular(){
+        val ozon="https://www.ozon.ru/product/item-123/".toHttpUrl()
+        val wb="https://www.wildberries.ru/catalog/123/detail.aspx".toHttpUrl()
+        val generic="""<h1>Чайник</h1><meta property="og:type" content="product"><meta property="og:title" content="Чайник"><meta property="product:price:amount" content="999"><meta property="product:price:currency" content="RUB">"""
+        assertNull(parseRenderedProduct(generic,"",ozon,"Ozon").price)
+        assertNull(parseRenderedProduct(generic,"",wb,"Wildberries").price)
+        val state="""<div id="state-webPrice-1" data-state='{"price":"1 299 ₽","cardPrice":"999 ₽","originalPrice":"2 000 ₽"}'></div>"""
+        assertEquals(129900L,parseRenderedProduct(generic+state,"",ozon,"Ozon").price)
+        assertEquals(139900L,parseRenderedProduct(generic+state,"1 399 ₽ с другими банками",ozon,"Ozon").price)
+        val priceBlock="""<div class="priceBlock"><span class="priceBlockWalletPrice_x">999 ₽</span><span class="priceBlockFinalPrice_x">1 299 ₽</span><del class="priceBlockOldPrice_x">2 000 ₽</del></div>"""
+        assertEquals(129900L,parseRenderedProduct(generic+priceBlock,"",wb,"Wildberries").price)
+        assertNull(parseRenderedProduct(generic+priceBlock.replace("priceBlockFinalPrice_x","priceBlockWalletPrice_y"),"",wb,"Wildberries").price)
+    }
     @Test fun renderedCardPrefersExplicitRegularPriceAndKeepsMainPhoto(){
         val page="https://market.yandex.ru/card/item/123".toHttpUrl()
         val html="""<h1>Чайник</h1><meta property="og:image" content="https://avatars.mds.yandex.net/get-mpic/123/orig">"""

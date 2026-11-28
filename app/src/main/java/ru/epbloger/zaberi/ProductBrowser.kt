@@ -44,6 +44,9 @@ internal val readCardScript="""
   document.querySelectorAll('meta[property],meta[name],script[type="application/ld+json"],h1,[itemscope][itemtype*="Product"],[id^="state-webPrice-"][data-state],[id^="state-webGallery-"][data-state],[data-widget="webGallery"],[data-widget="webProductHeading"]').forEach(append);
   const priceText=[];
   const scopedPrices=[];
+  const ozonPrices=[];
+  const wbPrices=[];
+  const wbFinal=[];
   const scope=document.querySelector('main')||document.body;
   if(scope){
     function visibleUnstruckText(el){
@@ -61,6 +64,11 @@ internal val readCardScript="""
     const nodes=scope.querySelectorAll('span,div,p,label,button,strong,b');
     const priceLabel=/(без\s+(?:(?:ozon|озон|wb|яндекс)\s+карты|карты|пэй|кошелька|яндекс|wb)|обычная\s+цена|с\s+другими\s+банками|с\s+любой\s+картой|при\s+оплате\s+любым\s+способом)/i;
     const priceScopes=document.querySelectorAll('[data-widget="webPrice"],[data-auto="price-value"],[data-auto="mainPrice"],[data-auto="price-block"],[data-testid="price"],[data-marker="item-view/item-price"]');
+    for(const e of Array.from(document.querySelectorAll('[class*="priceBlockFinalPrice"],.price-block__final-price')).slice(0,16)){
+      if(e.closest('s,del,strike,[hidden],[aria-hidden="true"],[class*="priceBlockWalletPrice"],[class*="wallet-price"],[class*="priceBlockOldPrice"]'))continue;
+      const t=visibleUnstruckText(e);
+      if(t.length>0&&t.length<100&&!wbFinal.includes(t))wbFinal.push(t);
+    }
     for(const e of Array.from(priceScopes).slice(0,32)){
       append(e);
       const t=visibleUnstruckText(e);
@@ -78,11 +86,15 @@ internal val readCardScript="""
           if(raw.length>240)break;
           context=visibleUnstruckText(p);
         }
-        if(context.length<240&&/(₽|руб\.?)/i.test(context)&&!priceText.includes(context))priceText.push(context);
+        if(context.length<240&&/(₽|руб\.?)/i.test(context)){
+          if(!priceText.includes(context))priceText.push(context);
+          if(e.closest('[data-widget="webPrice"]')&&!ozonPrices.includes(context))ozonPrices.push(context);
+          if(e.closest('[class*="priceBlock"],.price-block')&&!wbPrices.includes(context))wbPrices.push(context);
+        }
       }
     }
   }
-  return JSON.stringify({html:parts.join('\n'),prices:priceText.join('\n'),scopedPrices:scopedPrices});
+  return JSON.stringify({html:parts.join('\n'),prices:priceText.join('\n'),scopedPrices:scopedPrices,ozonPrices:ozonPrices,wbPrices:wbPrices,wbFinal:wbFinal});
  } catch(e) {
   return JSON.stringify({captureError:String(e.name||'Error').slice(0,40)});
  }
@@ -188,8 +200,19 @@ internal val readCardScript="""
                     val scoped=data.optJSONArray("scopedPrices")
                     val scopedValues=(0 until minOf(scoped?.length()?:0,32))
                         .mapNotNull{scopedProductPrice(scoped?.optString(it).orEmpty())}.distinct()
-                    val priceText=if(explicit.isBlank()&&scopedValues.size==1)
-                        "Обычная цена: "+number(scopedValues.single())+" ₽" else explicit
+                    fun prices(key:String,parse:(String)->Long?):List<Long>{
+                        val array=data.optJSONArray(key)
+                        return (0 until minOf(array?.length()?:0,32)).mapNotNull{parse(array?.optString(it).orEmpty())}.distinct()
+                    }
+                    val priceText=when(seed.store){
+                        "Ozon"->prices("ozonPrices",::ordinaryPriceFromText).singleOrNull()?.let{"Обычная цена: "+number(it)+" ₽"}.orEmpty()
+                        "Wildberries"->{
+                            val labeled=prices("wbPrices",::ordinaryPriceFromText)
+                            val regular=if(labeled.isNotEmpty())labeled.singleOrNull() else prices("wbFinal",::scopedProductPrice).singleOrNull()
+                            regular?.let{"Обычная цена: "+number(it)+" ₽"}.orEmpty()
+                        }
+                        else->if(explicit.isBlank()&&scopedValues.size==1)"Обычная цена: "+number(scopedValues.single())+" ₽" else explicit
+                    }
                     stage="metadata"
                     val result=ProductImporter.fromRenderedPage(data.getString("html"),priceText,page,seed.store,needPhoto&&partial?.photo==null)
                     if(!active)return@launch
