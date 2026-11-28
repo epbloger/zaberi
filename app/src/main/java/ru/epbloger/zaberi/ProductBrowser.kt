@@ -57,8 +57,9 @@ internal val readCardScript="""
     }
     const nodes=scope.querySelectorAll('span,div,p,label,button,strong,b');
     const priceLabel=/(без\s+(?:(?:ozon|озон|wb|яндекс)\s+карты|карты|пэй|кошелька|яндекс|wb)|обычная\s+цена|с\s+другими\s+банками|с\s+любой\s+картой|при\s+оплате\s+любым\s+способом)/i;
-    const priceScopes=document.querySelectorAll('[data-widget="webPrice"],[data-auto="price-value"],[data-auto="mainPrice"],[data-auto="price-block"],[data-testid="price"],[data-marker="item-view/item-price"],[itemprop="price"]');
+    const priceScopes=document.querySelectorAll('[data-widget="webPrice"],[data-auto="price-value"],[data-auto="mainPrice"],[data-auto="price-block"],[data-testid="price"],[data-marker="item-view/item-price"]');
     for(const e of Array.from(priceScopes).slice(0,32)){
+      append(e);
       const t=visibleUnstruckText(e);
       if(t.length>0&&t.length<800&&!scopedPrices.includes(t))scopedPrices.push(t);
     }

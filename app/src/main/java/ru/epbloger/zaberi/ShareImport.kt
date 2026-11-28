@@ -22,7 +22,7 @@ internal fun ordinaryPriceFromText(text:String):Long?{
     for(i in lines.indices){
         val line=lines[i]
         if(!ordinaryLabel.containsMatchIn(line))continue
-        if(Regex("(?i)(?:от|до)\\s+\\d|\\d\\s*[-–—]\\s*\\d").containsMatchIn(line))continue
+        if(Regex("(?iu)(?:от|до)\\s+\\d|\\d\\s*[-–—]\\s*\\d|в\\s+месяц|частями|рассроч|кэшбэк|кешбэк|старая\\s+цена|до\\s+скидки").containsMatchIn(line))continue
         val own=amounts(line)
         if(own.size==1){found.add(own.single());continue}
         if(own.isNotEmpty())continue
@@ -36,7 +36,7 @@ internal fun ordinaryPriceFromText(text:String):Long?{
 internal fun scopedProductPrice(text:String):Long?{
     val normalized=text.take(800).replace('\u2009',' ').replace('\u2007',' ').replace('\u00a0',' ').replace('\u202f',' ')
     ordinaryPriceFromText(normalized)?.let{return it}
-    if(Regex("(?iu)\\b(?:от|до)\\s+\\d|\\d\\s*[-–—]\\s*\\d|в\\s+месяц|частями|рассроч|сплит|доставк|кэшбэк|кешбэк|старая\\s+цена|до\\s+скидки|с\\s+картой|по\\s+карте|с\\s+кошельком|с\\s+(?:Ozon|Озон|WB|Яндекс)\\s+картой|с\\s+Пэй|с\\s+Яндекс\\s+Пэй|за\\s+(?:шт|ед)\\b").containsMatchIn(normalized))return null
+    if(Regex("(?iu)(?<![\\p{L}\\p{N}])(?:от|до)\\s+\\d|\\d\\s*[-–—]\\s*\\d|в\\s+месяц|частями|рассроч|сплит|доставк|кэшбэк|кешбэк|старая\\s+цена|до\\s+скидки|с\\s+картой|по\\s+карте|с\\s+кошельком|с\\s+(?:Ozon|Озон|WB|Яндекс)\\s+картой|с\\s+Пэй|с\\s+Яндекс\\s+Пэй|за\\s+(?:шт|ед)(?![\\p{L}\\p{N}])").containsMatchIn(normalized))return null
     val raw=rublePrice.findAll(normalized).map{it.groupValues[1].trim()}.toList()
     if(raw.size!=1||!validSharedAmount.matches(raw.single()))return null
     return parseMoney(raw.single())?.takeIf{it>0}

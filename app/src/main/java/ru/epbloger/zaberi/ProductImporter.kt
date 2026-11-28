@@ -357,7 +357,7 @@ private fun microdataMetadata(html:String,page:HttpUrl,store:String):ProductMeta
 
 // Only known current-price widgets are eligible for a single-price fallback.
 // Explicit ordinary-price labels take precedence over conditional card prices.
-internal val productPriceSelector="[data-widget=webPrice],[data-auto=price-value],[data-auto=mainPrice],[data-auto=price-block],[data-testid=price],[data-marker=item-view/item-price],[itemprop=price]"
+internal val productPriceSelector="[data-widget=webPrice],[data-auto=price-value],[data-auto=mainPrice],[data-auto=price-block],[data-testid=price],[data-marker=item-view/item-price]"
 private fun structuredVisiblePrice(doc:org.jsoup.nodes.Document):Long?{
     val scopes=doc.select(productPriceSelector).take(32)
     val texts=scopes.map{element->
@@ -380,13 +380,18 @@ internal fun parseProductMetadata(html:String,page:HttpUrl,store:String):Product
     }
     val doc=Jsoup.parse(html,page.toString())
     val scoped=structuredVisiblePrice(doc)
-    val base=ProductMetadata(schema.title?:micro.title,price?:scoped,schema.image?:micro.image)
+    val baseTitle=schema.title?:micro.title
+    val base=ProductMetadata(baseTitle,if(baseTitle!=null)price?:scoped else null,schema.image?:micro.image)
     if(store!="Ozon"||!page.encodedPath.startsWith("/product/"))return base
     val states=doc.select("[id^=state-webPrice-][data-state]").take(8)
     val gallery=doc.select("[data-widget=webGallery]").firstOrNull()
     val galleryState=doc.select("[id^=state-webGallery-][data-state]").firstOrNull()
     if(states.isEmpty()&&gallery==null&&galleryState==null)return base
-    val prices=states.mapNotNull{element->runCatching{val state=JSONObject(element.attr("data-state"));rubleText(state.string("priceWithoutCard"))?:rubleText(state.string("price"))}.getOrNull()}
+    val prices=states.mapNotNull{element->runCatching{
+        val state=JSONObject(element.attr("data-state"))
+        fun statePrice(key:String):Long?=rubleText(state.string(key))?:explicitRuble(state.string(key),state.string("priceCurrency")?:state.string("currency"))
+        statePrice("priceWithoutCard")?:statePrice("price")
+    }.getOrNull()}
     val ozonPrice=prices.distinct().singleOrNull()?.takeIf{prices.size==states.size}
     val title=doc.select("[data-widget=webProductHeading] h1").firstOrNull()?.text()?.trim()?.take(200)?.takeIf{it.isNotBlank()}
     val stateImage=galleryState?.let{element->
@@ -406,7 +411,8 @@ internal fun parseProductMetadata(html:String,page:HttpUrl,store:String):Product
         sequenceOf(img.attr("src"),img.attr("data-src")).filter{it.isNotBlank()}
             .mapNotNull{raw->page.resolve(raw)?.toString()?.let{publicImageUrl(it,"Ozon")?.toString()}}.firstOrNull()
     }?.firstOrNull()
-    return ProductMetadata(title?:base.title,ozonPrice?:scoped?:base.price,stateImage?:base.image?:image)
+    val productTitle=title?:base.title
+    return ProductMetadata(productTitle,if(productTitle!=null)ozonPrice?:scoped?:base.price else null,stateImage?:base.image?:image)
 }
 
 internal fun isShortProductUrl(url:HttpUrl,store:String):Boolean=when(store){
