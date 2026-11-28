@@ -382,15 +382,17 @@ internal fun storefrontRegularPrice(html:String,page:HttpUrl,store:String):Long?
     val doc=Jsoup.parse(html,page.toString())
     return when(store){
         "Ozon"->{
-            val states=doc.select("[id^=state-webPrice-][data-state]").take(8)
+            val states=doc.select("[id^=state-webPrice][data-state]").take(16)
             val prices=states.mapNotNull{element->runCatching{
                 val state=JSONObject(element.attr("data-state"))
                 fun value(key:String):Long?=rubleText(state.string(key))?:explicitRuble(state.string(key),state.string("priceCurrency")?:state.string("currency"))
+                if(state.has("isAvailable")&&!state.optBoolean("isAvailable",true))return@runCatching null
                 // priceWithoutCard is explicit; webPrice.price is the ordinary
                 // field in the supported format, not cardPrice or originalPrice.
                 if(state.has("priceWithoutCard"))value("priceWithoutCard") else value("price")
             }.getOrNull()}
-            prices.distinct().singleOrNull()?.takeIf{prices.size==states.size&&it>0}
+            // Ignore empty layout placeholders, but never resolve conflicting prices by guessing.
+            prices.distinct().singleOrNull()?.takeIf{it>0}
         }
         "Wildberries"->doc.select("[class*=priceBlockFinalPrice],.price-block__final-price").take(16).filter{element->
             (sequenceOf(element)+element.parents().asSequence()).none{p->

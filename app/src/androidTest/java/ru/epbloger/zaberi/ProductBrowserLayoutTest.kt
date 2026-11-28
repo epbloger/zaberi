@@ -31,6 +31,10 @@ class ProductBrowserLayoutTest{
         SharedProductSeed("","Wildberries","https://www.wildberries.ru/catalog/123/detail.aspx",null),
         """<h1>Чайник</h1><div class="priceBlock"><span class="priceBlockWalletPrice_x">999 ₽</span><span class="priceBlockFinalPrice_x">1 299 ₽</span><del class="priceBlockOldPrice_x">2 000 ₽</del></div>"""
     )
+    @Test fun ozonMobilePriceOutsideMainIgnoresCrossedOutOriginal()=verifyRenderedPrice(
+        SharedProductSeed("","Ozon","https://www.ozon.ru/product/2615816959/",null),
+        """<main><h1>Чайник</h1></main><aside><div>1 199 ₽</div><div>С банками</div><div><div><span>1&#8201;299&#8201;₽</span><span style="text-decoration:line-through"><span>5 000 ₽</span></span></div><div><span>С другими банками</span></div></div></aside>"""
+    )
     private fun verifyRenderedPrice(seed:SharedProductSeed,body:String){
         val result=AtomicReference<ProductLookup?>()
         val web=AtomicReference<WebView>()

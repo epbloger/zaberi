@@ -41,7 +41,12 @@ internal val readCardScript="""
     if(html.length>700000||size+html.length>1600000)return;
     parts.push(html);size+=html.length;
   }
-  document.querySelectorAll('meta[property],meta[name],script[type="application/ld+json"],h1,[itemscope][itemtype*="Product"],[id^="state-webPrice-"][data-state],[id^="state-webGallery-"][data-state],[data-widget="webGallery"],[data-widget="webProductHeading"]').forEach(append);
+  const ozonHost=/(^|\.)ozon\.(ru|com)$/i.test(location.hostname);
+  // Preserve Ozon's price JSON before large unrelated product markup can use the limit.
+  if(ozonHost)document.querySelectorAll('[id^="state-webPrice"][data-state]').forEach(append);
+  document.querySelectorAll('meta[property],meta[name],script[type="application/ld+json"],h1,[itemscope][itemtype*="Product"],[id^="state-webPrice-"][data-state],[id^="state-webGallery-"][data-state],[data-widget="webGallery"],[data-widget="webProductHeading"]').forEach(e=>{
+    if(!ozonHost||!e.matches('[id^="state-webPrice"][data-state]'))append(e);
+  });
   const priceText=[];
   const scopedPrices=[];
   const ozonPrices=[];
@@ -93,6 +98,54 @@ internal val readCardScript="""
         }
       }
     }
+  }
+  if(ozonHost&&document.body){
+    // Mobile layouts may put the payment widget outside main or use a different
+    // widget name. Follow the explicitly labeled price, not CSS class hashes.
+    const label=/(?:с\s+другими\s+банками|без\s+(?:(?:ozon|озон)\s+карты|карты(?:\s+(?:ozon|озон))?)|обычная\s+цена)/i;
+    const money=/(?:\d[\d \u00a0\u202f\u2009\u2007]*(?:[.,]\d{1,2})?)\s*(?:₽|руб\.?)/gi;
+    function excluded(el){
+      for(let p=el;p&&p!==document.body;p=p.parentElement){
+        const css=getComputedStyle(p);
+        if(p.hidden||p.getAttribute('aria-hidden')==='true'||p.matches('s,del,strike')||css.display==='none'||css.visibility==='hidden'||String(css.textDecorationLine||css.textDecoration||'').includes('line-through'))return true;
+      }
+      return false;
+    }
+    function visibleText(el){
+      if(excluded(el)||!el.getClientRects().length)return '';
+      const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);
+      const chunks=[];
+      let node,visited=0;
+      while((node=walker.nextNode())&&visited++<100){
+        if(node.parentElement&&!excluded(node.parentElement))chunks.push(node.textContent||'');
+      }
+      return chunks.join(' ').replace(/\s+/g,' ').trim();
+    }
+    const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
+    let node,visited=0;
+    const primary=[],fallback=[];
+    while((node=walker.nextNode())&&visited++<30000){
+      const e=node.parentElement;
+      if(!e||!label.test(node.textContent||'')||excluded(e)||!e.getClientRects().length)continue;
+      // Use the smallest enclosing price group with exactly one current amount.
+      for(let p=e,depth=0;p&&depth<7&&p!==document.body;p=p.parentElement,depth++){
+        if((p.innerText||'').length>500)break;
+        const text=visibleText(p);
+        if(!label.test(text))continue;
+        const amounts=text.match(money)||[];
+        if(amounts.length>1)break;
+        if(amounts.length!==1)continue;
+        // No range, instalment, partner-bank price or other-offer price.
+        if(/с\s+банками|с\s+картой|другие\s+предложения|(?:от|до)\s+\d|в\s+месяц|частями|рассроч|доставк|кэшбэк|кешбэк/i.test(text))break;
+        const dest=p.closest('[data-widget^="webPrice"]')?primary:fallback;
+        if(!dest.includes(text)&&dest.length<24)dest.push(text);
+        break;
+      }
+    }
+    // A named price widget is preferred; otherwise require an unambiguous
+    // explicit label anywhere on the product document.
+    const selected=primary.length?primary:fallback;
+    if(selected.length){ozonPrices.length=0;selected.forEach(t=>ozonPrices.push(t));}
   }
   return JSON.stringify({html:parts.join('\n'),prices:priceText.join('\n'),scopedPrices:scopedPrices,ozonPrices:ozonPrices,wbPrices:wbPrices,wbFinal:wbFinal});
  } catch(e) {

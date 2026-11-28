@@ -106,6 +106,14 @@ class ShareImportDeviceTest {
         assertEquals(129900L,p.price)
         assertEquals("https://ir.ozone.ru/s3/cover.jpg",p.image)
     }
+    @Test fun ozonStateWithEmptyPlaceholderUsesOnlyUnambiguousRegularPrice(){
+        val page="https://www.ozon.ru/product/2615816959/".toHttpUrl()
+        val empty="""<div id="state-webPrice-0" data-state='{}'></div>"""
+        val real="""<div id="state-webPriceV2-1" data-state='{"price":"34 778 ₽","cardPrice":"30 257 ₽","originalPrice":"150 000 ₽"}'></div>"""
+        assertEquals(3477800L,storefrontRegularPrice(empty+real,page,"Ozon"))
+        assertNull(storefrontRegularPrice(real+real.replace("34 778","35 778"),page,"Ozon"))
+        assertNull(storefrontRegularPrice(real.replace("\"price\":\"34 778 ₽\",",""),page,"Ozon"))
+    }
     @Test fun ozonAndWbNeverUseGenericWalletOrOldPriceAsRegular(){
         val ozon="https://www.ozon.ru/product/item-123/".toHttpUrl()
         val wb="https://www.wildberries.ru/catalog/123/detail.aspx".toHttpUrl()
