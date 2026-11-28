@@ -39,6 +39,24 @@ class ShareImportTest {
         assertNull(ordinaryPriceFromText("1\u2009882\u2009₽ 3\u2009282\u2009₽\nС другими банками"))
         assertNull(ordinaryPriceFromText("100 ₽ без Сплита"))
     }
+    @Test fun scopedCurrentPriceIsNotConfusedWithOtherAmounts(){
+        assertEquals(129900L,scopedProductPrice("1 299 ₽"))
+        assertEquals(129900L,scopedProductPrice("999 ₽ с картой\n1 299 ₽ без Ozon Карты"))
+        assertEquals(129900L,scopedProductPrice("1 299 руб. с любой картой"))
+        assertNull(scopedProductPrice("999 ₽ с картой"))
+        assertNull(scopedProductPrice("от 999 ₽"))
+        assertNull(scopedProductPrice("999 ₽ в месяц"))
+        assertNull(scopedProductPrice("999 ₽\n1 299 ₽"))
+        assertNull(scopedProductPrice("999 ₽ доставка"))
+        assertNull(scopedProductPrice("1 299 ₽ старая цена"))
+        assertEquals("arrived",quickOrderEvent(Status.TRANSIT))
+        assertEquals("received",quickOrderEvent(Status.READY))
+        assertEquals("keep",quickOrderEvent(Status.RECEIVED))
+        assertNull(quickOrderEvent(Status.REFUND))
+        assertNull(quickOrderEvent(Status.RETURN_PLANNED))
+        assertNull(quickOrderEvent(Status.DONE))
+        assertNull(quickOrderEvent(Status.CANCELLED))
+    }
     @Test fun incomingTextAndSubjectAreBoundedBeforeParsing(){
         val url="https://www.ozon.ru/product/item-123/"
         assertEquals("Чайник\n"+url,combinedSharedText(url,"Чайник"))

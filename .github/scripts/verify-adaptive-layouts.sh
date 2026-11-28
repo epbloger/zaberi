@@ -26,12 +26,12 @@ adb shell wm density 320
 adb shell settings put system font_scale 1.3
 adb shell cmd overlay enable-exclusive --category com.android.internal.systemui.navbar.threebutton || true
 adb shell am force-stop ru.epbloger.zaberi
-run_suite compact -Pandroid.testInstrumentationRunnerArguments.class=ru.epbloger.zaberi.AdaptiveLayoutTest
+run_suite compact -Pandroid.testInstrumentationRunnerArguments.class=ru.epbloger.zaberi.AdaptiveLayoutTest,ru.epbloger.zaberi.ProductBrowserLayoutTest
 adb shell wm size 1280x800
 adb shell wm density 160
 adb shell settings put system font_scale 1.5
 adb shell am force-stop ru.epbloger.zaberi
-run_suite tablet -Pandroid.testInstrumentationRunnerArguments.class=ru.epbloger.zaberi.AdaptiveLayoutTest
+run_suite tablet -Pandroid.testInstrumentationRunnerArguments.class=ru.epbloger.zaberi.AdaptiveLayoutTest,ru.epbloger.zaberi.ProductBrowserLayoutTest
 adb shell wm size reset
 adb shell wm density reset
 adb shell settings put system font_scale 1.0

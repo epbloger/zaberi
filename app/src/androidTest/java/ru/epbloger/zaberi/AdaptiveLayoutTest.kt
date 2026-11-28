@@ -171,6 +171,36 @@ class AdaptiveLayoutTest {
         compose.waitUntil(timeoutMillis=10000){compose.onAllNodesWithTag("new_order").fetchSemanticsNodes().isNotEmpty()}
         assertTrue("Confirmed deletion must reach Room",runBlocking{ZaberiDb.get(compose.activity.applicationContext).orders().all().none{it.name==name}})
     }
+    @Test fun quickDeliveryTransitionsStayInListAndPreservePayment(){
+        val dao=ZaberiDb.get(compose.activity.applicationContext).orders()
+        val id=uid()
+        val order=Order(id,"Быстрая смена "+id,"Ozon",129900,0,Status.TRANSIT.name,today(),"","","",today())
+        runBlocking{dao.insert(order)}
+        try{
+            compose.waitUntil(15000){compose.onAllNodesWithTag("orders_list").fetchSemanticsNodes().isNotEmpty()}
+            val list=compose.onNodeWithTag("orders_list")
+            list.performScrollToNode(hasTestTag("quick_arrived_"+id))
+            assertInsideWindow("quick_arrived_"+id)
+            compose.onNodeWithTag("quick_arrived_"+id).performTouchInput{click()}
+            compose.waitUntil(15000){runBlocking{dao.get(id)?.state==Status.READY}}
+            list.assertExists()
+            list.performScrollToNode(hasTestTag("quick_received_"+id))
+            compose.onNodeWithTag("quick_received_"+id).performTouchInput{click()}
+            compose.onNodeWithText("Отмена",substring=false).performClick()
+            assertTrue(runBlocking{dao.get(id)?.state==Status.READY})
+            compose.onNodeWithTag("quick_received_"+id).performTouchInput{click()}
+            compose.onNodeWithText("Забрал",substring=false).performClick()
+            compose.waitUntil(15000){runBlocking{dao.get(id)?.state==Status.RECEIVED}}
+            list.performScrollToNode(hasTestTag("quick_keep_"+id))
+            compose.onNodeWithTag("quick_keep_"+id).performTouchInput{click()}
+            compose.waitUntil(15000){runBlocking{dao.get(id)?.state==Status.DONE}}
+            val saved=runBlocking{requireNotNull(dao.get(id))}
+            assertTrue(saved.price==129900L&&saved.paid==0L&&saved.expectedRefund==0L&&saved.receivedRefund==0L&&saved.deadline==null)
+            assertTrue(runBlocking{dao.allTransactions().none{it.orderId==id}})
+            assertTrue(runBlocking{dao.allHistory().count{it.orderId==id}==3})
+            list.assertExists()
+        }finally{runBlocking{dao.get(id)?.let{dao.delete(it)}}}
+    }
     @Test fun mapActionRemainsVisibleAndReturnsToDraft(){
         compose.onNodeWithTag("new_order").performTouchInput{click()}
         enterTextWithKeyboard("order_name", "Черновик")

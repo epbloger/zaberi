@@ -11,7 +11,7 @@ private val sharedUrl=Regex("https?://[^\\s<>\"']+",RegexOption.IGNORE_CASE)
 private val rublePrice=Regex("(?<![\\d.,])([+\\-−]?[ \\u00a0\\u202f]*[0-9][0-9., \\u00a0\\u202f]*?)\\s*(?:₽|руб(?:\\.|лей|ля|ль)?(?![\\p{L}])|RUB\\b)",RegexOption.IGNORE_CASE)
 private val validSharedAmount=Regex("(?:[0-9]+|[0-9]{1,3}(?:[ \\u00a0\\u202f][0-9]{3})+)(?:[.,][0-9]{1,2})?")
 private const val MAX_SHARED_TEXT=8192
-private val ordinaryLabel=Regex("(?iu)(?<![\\p{L}\\p{N}])(?:обычная\\s+цена|без\\s+(?:карты(?:\\s+(?:Ozon|Озон|WB|Яндекс\\s+Пэй))?|(?:Яндекс\\s+)?Пэй|(?:WB\\s+)?кошелька)|с\\s+другими\\s+банками)(?![\\p{L}\\p{N}])")
+private val ordinaryLabel=Regex("(?iu)(?<![\\p{L}\\p{N}])(?:обычная\\s+цена|без\\s+(?:(?:Ozon|Озон|WB|Яндекс)\\s+карты|карты(?:\\s+(?:Ozon|Озон|WB|Яндекс\\s+Пэй))?|(?:Яндекс\\s+)?Пэй|(?:WB\\s+)?кошелька)|с\\s+другими\\s+банками|с\\s+любой\\s+картой|при\\s+оплате\\s+любым\\s+способом)(?![\\p{L}\\p{N}])")
 internal fun ordinaryPriceFromText(text:String):Long?{
     fun amounts(line:String)=rublePrice.findAll(line).mapNotNull{
         val raw=it.groupValues[1].trim()
@@ -32,6 +32,14 @@ internal fun ordinaryPriceFromText(text:String):Long?{
         if(nearby.size==1)found.add(nearby.single())
     }
     return found.distinct().singleOrNull()
+}
+internal fun scopedProductPrice(text:String):Long?{
+    val normalized=text.take(800).replace('\u2009',' ').replace('\u2007',' ').replace('\u00a0',' ').replace('\u202f',' ')
+    ordinaryPriceFromText(normalized)?.let{return it}
+    if(Regex("(?iu)\\b(?:от|до)\\s+\\d|\\d\\s*[-–—]\\s*\\d|в\\s+месяц|частями|рассроч|сплит|доставк|кэшбэк|кешбэк|старая\\s+цена|до\\s+скидки|с\\s+картой|по\\s+карте|с\\s+кошельком|с\\s+(?:Ozon|Озон|WB|Яндекс)\\s+картой|с\\s+Пэй|с\\s+Яндекс\\s+Пэй|за\\s+(?:шт|ед)\\b").containsMatchIn(normalized))return null
+    val raw=rublePrice.findAll(normalized).map{it.groupValues[1].trim()}.toList()
+    if(raw.size!=1||!validSharedAmount.matches(raw.single()))return null
+    return parseMoney(raw.single())?.takeIf{it>0}
 }
 internal fun sharedProductSeed(text:String):SharedProductSeed {
     val bounded=text.take(MAX_SHARED_TEXT).replace('\u2009',' ').replace('\u2007',' ')

@@ -317,7 +317,7 @@ private suspend fun lookupWildberries(article:Long,needPhoto:Boolean):ProductLoo
 }
 private fun rubleText(raw:String?):Long?{
     val value=raw?.replace('\u2009',' ')?.replace('\u202f',' ')?.replace('\u00a0',' ')?.trim()?:return null
-    val match=Regex("^([0-9]+(?: [0-9]{3})*(?:[.,][0-9]{1,2})?)\\s*₽$").matchEntire(value)?:return null
+    val match=Regex("^([0-9]+(?: [0-9]{3})*(?:[.,][0-9]{1,2})?)\\s*(?:₽|руб\\.?|RUB)$",RegexOption.IGNORE_CASE).matchEntire(value)?:return null
     return parseMoney(match.groupValues[1])
 }
 private fun microdataMetadata(html:String,page:HttpUrl,store:String):ProductMetadata{
@@ -355,6 +355,20 @@ private fun microdataMetadata(html:String,page:HttpUrl,store:String):ProductMeta
     return ProductMetadata(title,price,image)
 }
 
+// Only known current-price widgets are eligible for a single-price fallback.
+// Explicit ordinary-price labels take precedence over conditional card prices.
+internal val productPriceSelector="[data-widget=webPrice],[data-auto=price-value],[data-auto=mainPrice],[data-auto=price-block],[data-testid=price],[data-marker=item-view/item-price],[itemprop=price]"
+private fun structuredVisiblePrice(doc:org.jsoup.nodes.Document):Long?{
+    val scopes=doc.select(productPriceSelector).take(32)
+    val texts=scopes.map{element->
+        val copy=element.clone()
+        copy.select("s,del,strike,[style*=line-through],[hidden],[aria-hidden=true]").remove()
+        copy.wholeText().trim().take(800)
+    }
+    val explicit=texts.mapNotNull(::ordinaryPriceFromText).distinct()
+    if(explicit.isNotEmpty())return explicit.singleOrNull()
+    return texts.mapNotNull(::scopedProductPrice).distinct().singleOrNull()
+}
 internal fun parseProductMetadata(html:String,page:HttpUrl,store:String):ProductMetadata{
     val schema=parseSchemaMetadata(html,page,store)
     val micro=microdataMetadata(html,page,store)
@@ -364,9 +378,10 @@ internal fun parseProductMetadata(html:String,page:HttpUrl,store:String):Product
         schema.title==null->micro.price
         else->null
     }
-    val base=ProductMetadata(schema.title?:micro.title,price,schema.image?:micro.image)
-    if(store!="Ozon"||!page.encodedPath.startsWith("/product/"))return base
     val doc=Jsoup.parse(html,page.toString())
+    val scoped=structuredVisiblePrice(doc)
+    val base=ProductMetadata(schema.title?:micro.title,price?:scoped,schema.image?:micro.image)
+    if(store!="Ozon"||!page.encodedPath.startsWith("/product/"))return base
     val states=doc.select("[id^=state-webPrice-][data-state]").take(8)
     val gallery=doc.select("[data-widget=webGallery]").firstOrNull()
     val galleryState=doc.select("[id^=state-webGallery-][data-state]").firstOrNull()
@@ -391,7 +406,7 @@ internal fun parseProductMetadata(html:String,page:HttpUrl,store:String):Product
         sequenceOf(img.attr("src"),img.attr("data-src")).filter{it.isNotBlank()}
             .mapNotNull{raw->page.resolve(raw)?.toString()?.let{publicImageUrl(it,"Ozon")?.toString()}}.firstOrNull()
     }?.firstOrNull()
-    return ProductMetadata(title?:base.title,if(states.isNotEmpty())ozonPrice else base.price,stateImage?:base.image?:image)
+    return ProductMetadata(title?:base.title,ozonPrice?:scoped?:base.price,stateImage?:base.image?:image)
 }
 
 internal fun isShortProductUrl(url:HttpUrl,store:String):Boolean=when(store){

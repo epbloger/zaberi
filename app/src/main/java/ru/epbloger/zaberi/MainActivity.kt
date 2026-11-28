@@ -195,7 +195,7 @@ class MainActivity:ComponentActivity(){
         floatingActionButton={if(order==null&&tab==0)ExtendedFloatingActionButton(containerColor=actionColor(ActionTone.DELIVERY),contentColor=Color.White,onClick={clearImport();add=true},modifier=Modifier.testTag("new_order"),icon={Icon(Icons.Default.Add,null)},text={Text("Добавить заказ")})}
     ){pad->
         Box(Modifier.fillMaxSize().padding(pad)){
-            when{order!=null->Detail(order,history.filter{it.orderId==order.id},vm,{selected=null},{editing=true});tab==0->key(preferences.adultAdsEligible,preferences.personalizedAds){Orders(orders,{selected=it.id;openedStatus=it.status},{vm.act(it.id,"received")},searchVisible,{clearImport();add=true},preferences.personalizedAds,adsReady,vm::cover)};tab==1->CalendarPage(orders,{selected=it.id;openedStatus=it.status});tab==2->Stats(orders,tx);else->SettingsPage(preferences,catalog,vm,settingsPage,{if(it=="Обучение"){settingsPage="";guideStep=0;tab=0}else settingsPage=it})}
+            when{order!=null->Detail(order,history.filter{it.orderId==order.id},vm,{selected=null},{editing=true});tab==0->key(preferences.adultAdsEligible,preferences.personalizedAds){Orders(orders,{selected=it.id;openedStatus=it.status},{o,event->vm.act(o.id,event,expectedState=o.state)},searchVisible,{clearImport();add=true},preferences.personalizedAds,adsReady,vm::cover)};tab==1->CalendarPage(orders,{selected=it.id;openedStatus=it.status});tab==2->Stats(orders,tx);else->SettingsPage(preferences,catalog,vm,settingsPage,{if(it=="Обучение"){settingsPage="";guideStep=0;tab=0}else settingsPage=it})}
         }
     }
     val waitingShare=shared

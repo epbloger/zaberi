@@ -90,7 +90,7 @@ class Model(app: Application): AndroidViewModel(app) {
             catch(_:Exception){ProductLookup(null,null,null,"Не удалось загрузить сведения. Можно продолжить вручную.")}
         kotlinx.coroutines.currentCoroutineContext().ensureActive()
         val current=_productImport.value?.takeIf{it.requestId==id}?:return
-        _productImport.value=current.copy(title=result.title,price=result.price,photo=current.photo?:result.photo,loading=false,message=result.warning)
+        _productImport.value=current.copy(title=result.title?:current.title,price=result.price?:current.price,photo=current.photo?:result.photo,loading=false,message=result.warning)
     }
 
     // Form save state belongs to the ViewModel, not to a particular Activity composition.
@@ -180,9 +180,10 @@ class Model(app: Application): AndroidViewModel(app) {
         dao.update(updated);rememberValues(updated)
         log(id,"Изменены сведения")
     }
-    fun act(id: String, event: String, deadline: String? = null, amount: Long? = null) = change(afterCommit={cancelReminder(id)}) {
+    fun act(id: String, event: String, deadline: String? = null, amount: Long? = null, expectedState:Status?=null) = change(afterCommit={cancelReminder(id)}) {
         deadline?.let{LocalDate.parse(it)}
         val o = dao.get(id) ?: error("Заказ не найден")
+        if(expectedState!=null&&o.state!=expectedState)return@change
         require(event !in listOf("return","reopen") || !o.returned && !o.cancelled) { "Возврат уже завершён" }
         val state = nextStatus(o.state,event,o.paid)
         val expected = if(state == Status.REFUND) (amount ?: o.paid) else 0L

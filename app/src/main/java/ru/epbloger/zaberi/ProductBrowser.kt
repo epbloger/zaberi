@@ -8,6 +8,11 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebSettings
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -24,7 +29,7 @@ import org.json.JSONTokener
 
 // Read only the visible public card and explicit product metadata. No JS bridge,
 // credentials, background browsing, CAPTCHA automation, or third-party server.
-private val readCardScript="""
+internal val readCardScript="""
 (function(){
   const parts=[];
   let size=0;
@@ -35,6 +40,7 @@ private val readCardScript="""
   }
   document.querySelectorAll('meta[property],meta[name],script[type="application/ld+json"],h1,[itemscope][itemtype*="Product"],[id^="state-webPrice-"][data-state],[id^="state-webGallery-"][data-state],[data-widget="webGallery"],[data-widget="webProductHeading"]').forEach(append);
   const priceText=[];
+  const scopedPrices=[];
   const scope=document.querySelector('main')||document.body;
   if(scope){
     function visibleUnstruckText(el){
@@ -49,33 +55,42 @@ private val readCardScript="""
       }
       return parts.join(' ').replace(/\s+/g,' ').trim();
     }
-    const nodes=scope.querySelectorAll('span,div,p');
+    const nodes=scope.querySelectorAll('span,div,p,label,button,strong,b');
+    const priceLabel=/(без\s+(?:(?:ozon|озон|wb|яндекс)\s+карты|карты|пэй|кошелька|яндекс|wb)|обычная\s+цена|с\s+другими\s+банками|с\s+любой\s+картой|при\s+оплате\s+любым\s+способом)/i;
+    const priceScopes=document.querySelectorAll('[data-widget="webPrice"],[data-auto="price-value"],[data-auto="mainPrice"],[data-auto="price-block"],[data-testid="price"],[data-marker="item-view/item-price"],[itemprop="price"]');
+    for(const e of Array.from(priceScopes).slice(0,32)){
+      const t=visibleUnstruckText(e);
+      if(t.length>0&&t.length<800&&!scopedPrices.includes(t))scopedPrices.push(t);
+    }
     for(let i=0;i<nodes.length&&i<18000&&priceText.length<24;i++){
       const e=nodes[i];
       if(e.childElementCount>8||!e.getClientRects().length)continue;
       const t=(e.innerText||'').trim();
-      if(t.length>0&&t.length<170&&/(без\s+(карты|пэй|кошелька|яндекс|wb)|обычная\s+цена|с\s+другими\s+банками)/i.test(t)){
+      if(t.length>0&&t.length<240&&priceLabel.test(t)){
         let context=visibleUnstruckText(e);
         let p=e.parentElement;
-        for(let level=0;level<2&&!/₽/.test(context)&&p;level++,p=p.parentElement){
+        for(let level=0;level<4&&!/(₽|руб\.?)/i.test(context)&&p;level++,p=p.parentElement){
           const raw=(p.innerText||'').trim();
-          if(raw.length>170)break;
+          if(raw.length>240)break;
           context=visibleUnstruckText(p);
         }
-        if(context.length<170&&/₽/.test(context)&&!priceText.includes(context))priceText.push(context);
+        if(context.length<240&&/(₽|руб\.?)/i.test(context)&&!priceText.includes(context))priceText.push(context);
       }
     }
   }
-  return JSON.stringify({html:parts.join('\n'),prices:priceText.join('\n')});
+  return JSON.stringify({html:parts.join('\n'),prices:priceText.join('\n'),scopedPrices:scopedPrices});
 })()
 """.trimIndent()
 
-@Composable internal fun ProductBrowserDialog(seed:SharedProductSeed,needPhoto:Boolean,close:()->Unit,apply:(ProductLookup)->Unit){
+@Composable internal fun ProductBrowserDialog(seed:SharedProductSeed,needPhoto:Boolean,needPrice:Boolean,close:()->Unit,
+    loadPage:(WebView,HttpUrl)->Unit={view,url->view.loadUrl(url.toString())},apply:(ProductLookup)->Unit){
     val start=publicProductUrl(seed.link,seed.store)?:return
     val context=LocalContext.current
     val scope=rememberCoroutineScope()
     var ready by remember{mutableStateOf(false)}
     var busy by remember{mutableStateOf(false)}
+    var partial by remember{mutableStateOf<ProductLookup?>(null)}
+    var manualPrice by remember{mutableStateOf("")}
     var message by remember{mutableStateOf("Открываем карточку…")}
     var locked by remember{mutableStateOf<HttpUrl?>(start.takeUnless{isShortProductUrl(it,seed.store)})}
     var active by remember{mutableStateOf(true)}
@@ -123,7 +138,7 @@ private val readCardScript="""
         }
     }
     DisposableEffect(web){
-        web.loadUrl(start.toString())
+        loadPage(web,start)
         onDispose{
             active=false
             web.stopLoading()
@@ -131,41 +146,67 @@ private val readCardScript="""
             web.destroy()
         }
     }
-    Dialog(onDismissRequest=close,properties=DialogProperties(usePlatformDefaultWidth=false)){
-        Surface(Modifier.fillMaxSize()){
-            Column(Modifier.fillMaxSize().padding(12.dp)){
-                Text("Карточка товара",style=MaterialTheme.typography.titleLarge)
-                Text("Публичная страница магазина. Не вводите данные аккаунта.",style=MaterialTheme.typography.bodySmall)
-                Text(message,style=MaterialTheme.typography.bodySmall)
-                AndroidView(factory={web},modifier=Modifier.weight(1f).fillMaxWidth().testTag("product_browser"))
+    fun capture(){
+        val page=web.url?.let{allowed(it)}
+        if(page==null||isShortProductUrl(page,seed.store)){
+            message="Дождитесь открытия карточки.";return
+        }
+        busy=true
+        web.evaluateJavascript(readCardScript){raw->
+            if(!active)return@evaluateJavascript
+            scope.launch{
+                try{
+                    if(web.url?.let{allowed(it)}!=page)error("Page changed")
+                    val json=JSONTokener(raw).nextValue() as? String?:error("No page")
+                    require(json.length<=2000000)
+                    val data=JSONObject(json)
+                    val explicit=data.getString("prices")
+                    val scoped=data.optJSONArray("scopedPrices")
+                    val scopedValues=(0 until minOf(scoped?.length()?:0,32))
+                        .mapNotNull{scopedProductPrice(scoped?.optString(it).orEmpty())}.distinct()
+                    val priceText=if(explicit.isBlank()&&scopedValues.size==1)
+                        "Обычная цена: "+number(scopedValues.single())+" ₽" else explicit
+                    val result=ProductImporter.fromRenderedPage(data.getString("html"),priceText,page,seed.store,needPhoto&&partial?.photo==null)
+                    if(!active)return@launch
+                    if(web.url?.let{allowed(it)}!=page)error("Page changed")
+                    val previous=partial
+                    val combined=result.copy(title=result.title?:previous?.title,photo=previous?.photo?:result.photo)
+                    if(combined.title==null&&combined.price==null&&combined.photo==null){
+                        message="Данные пока не видны. Дождитесь загрузки и повторите."
+                    }else if(needPrice&&combined.price==null){
+                        partial=combined
+                        message="Цена не распознана. Укажите её по карточке или повторите чтение."
+                    }else apply(combined)
+                }catch(e:kotlinx.coroutines.CancellationException){throw e}
+                catch(_:Exception){if(active)message="Не удалось прочитать карточку. Попробуйте после загрузки."}
+                finally{if(active)busy=false}
+            }
+        }
+    }
+    Dialog(onDismissRequest=close,properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)){
+        SafeAppViewport{
+            Column(Modifier.fillMaxSize().padding(horizontal=12.dp,vertical=8.dp)){
+                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
+                    Text("Карточка товара",Modifier.weight(1f),style=MaterialTheme.typography.titleLarge,maxLines=1)
+                    IconButton(onClick=close,modifier=Modifier.testTag("close_product_browser")){Icon(Icons.Default.Close,"Вернуться к заказу")}
+                }
+                val pending=partial
+                if(pending==null){
+                    Button(enabled=ready&&!busy,onClick={capture()},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("capture_product")){Text("Перенести данные")}
+                }else{
+                    val parsed=parseMoney(manualPrice)
+                    OutlinedTextField(manualPrice,{manualPrice=it},Modifier.fillMaxWidth().testTag("browser_manual_price"),
+                        label={Text("Цена на карточке, ₽")},singleLine=true,keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Decimal),isError=manualPrice.isNotBlank()&&parsed==null)
+                    Button(enabled=!busy&&parsed!=null,onClick={apply(pending.copy(price=parsed,warning="Цена указана вами по карточке. Проверьте данные."))},
+                        modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("capture_product")){Text("Перенести данные")}
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){
+                        TextButton(enabled=ready&&!busy,onClick={capture()}){Text("Повторить")}
+                        TextButton(enabled=!busy,onClick={apply(pending)}){Text("Без цены")}
+                    }
+                }
                 if(busy)LinearProgressIndicator(Modifier.fillMaxWidth())
-                Button(enabled=ready&&!busy,onClick={
-                    val page=web.url?.let{allowed(it)}
-                    if(page==null||isShortProductUrl(page,seed.store)){
-                        message="Дождитесь открытия карточки.";return@Button
-                    }
-                    busy=true
-                    web.evaluateJavascript(readCardScript){raw->
-                        if(!active)return@evaluateJavascript
-                        scope.launch{
-                            try{
-                                val current=web.url?.let{allowed(it)}
-                                if(current!=page)error("Page changed")
-                                val json=JSONTokener(raw).nextValue() as? String?:error("No page")
-                                require(json.length<=2000000)
-                                val data=JSONObject(json)
-                                val result=ProductImporter.fromRenderedPage(data.getString("html"),data.getString("prices"),page,seed.store,needPhoto)
-                                if(!active)return@launch
-                                if(result.title==null&&result.price==null&&result.photo==null){
-                                    message="Данные пока не видны. Дождитесь загрузки или вернитесь к заказу."
-                                }else apply(result)
-                            }catch(e:kotlinx.coroutines.CancellationException){throw e}
-                            catch(_:Exception){if(active)message="Не удалось прочитать карточку. Попробуйте после загрузки."}
-                            finally{if(active)busy=false}
-                        }
-                    }
-                },modifier=Modifier.fillMaxWidth().testTag("capture_product")){Text("Перенести данные")}
-                TextButton(onClick=close,modifier=Modifier.fillMaxWidth()){Text("Вернуться к заказу")}
+                Text(message,style=MaterialTheme.typography.bodySmall,maxLines=3)
+                AndroidView(factory={web},modifier=Modifier.weight(1f).fillMaxWidth().testTag("product_browser"))
             }
         }
     }

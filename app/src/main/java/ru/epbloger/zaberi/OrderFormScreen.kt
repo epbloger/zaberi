@@ -94,7 +94,7 @@ import java.util.Locale
     val focus=LocalFocusManager.current
     val keyboard=LocalSoftwareKeyboardController.current
     if(showProductBrowser&&renderedLookup!=null&&!sourceChanged&&sharedState!=null){
-        ProductBrowserDialog(seed,sharedState.photo==null&&!photoRemoved,{showProductBrowser=false}){result->
+        ProductBrowserDialog(seed,sharedState.photo==null&&!photoRemoved,price.isBlank()&&!priceTouched,{showProductBrowser=false}){result->
             showProductBrowser=false
             renderedLookup(result)
         }
