@@ -32,6 +32,7 @@ import org.json.JSONTokener
 // credentials, background browsing, CAPTCHA automation, or third-party server.
 internal val readCardScript="""
 (function(){
+ try {
   const parts=[];
   let size=0;
   function append(e){
@@ -47,7 +48,7 @@ internal val readCardScript="""
     function visibleUnstruckText(el){
       if(!el.getClientRects().length)return '';
       const css=getComputedStyle(el);
-      if(css.visibility==='hidden'||css.display==='none'||css.textDecorationLine.includes('line-through')||el.matches('s,del,strike'))return '';
+      if(css.visibility==='hidden'||css.display==='none'||String(css.textDecorationLine||css.textDecoration||'').includes('line-through')||el.matches('s,del,strike'))return '';
       if(el.childElementCount===0)return el.innerText||el.textContent||'';
       let parts=[];
       for(const child of el.childNodes){
@@ -80,13 +81,17 @@ internal val readCardScript="""
       }
     }
   }
-  return {html:parts.join('\n'),prices:priceText.join('\n'),scopedPrices:scopedPrices};
+  return JSON.stringify({html:parts.join('\n'),prices:priceText.join('\n'),scopedPrices:scopedPrices});
+ } catch(e) {
+  return JSON.stringify({captureError:String(e.name||'Error').slice(0,40)});
+ }
 })()
 """.trimIndent()
 
 @Composable internal fun ProductBrowserDialog(seed:SharedProductSeed,needPhoto:Boolean,needPrice:Boolean,close:()->Unit,
     loadPage:(WebView,HttpUrl)->Unit={view,url->view.loadUrl(url.toString())},
-    localResponse:((WebResourceRequest)->WebResourceResponse?)?=null,apply:(ProductLookup)->Unit){
+    localResponse:((WebResourceRequest)->WebResourceResponse?)?=null,
+    captureDiagnostic:((String)->Unit)?=null,apply:(ProductLookup)->Unit){
     val start=publicProductUrl(seed.link,seed.store)?:return
     val context=LocalContext.current
     val scope=rememberCoroutineScope()
@@ -162,22 +167,29 @@ internal val readCardScript="""
         web.evaluateJavascript(readCardScript){raw->
             if(!active)return@evaluateJavascript
             scope.launch{
+                var stage="navigation"
                 try{
                     if(web.url?.let{allowed(it)}!=page)error("Page changed")
+                    stage="decode"
                     require(raw!=null&&raw.length<=4000000)
                     val data=when(val decoded=JSONTokener(raw).nextValue()){
                         is JSONObject->decoded
                         is String->JSONObject(decoded)
                         else->error("Empty capture")
                     }
+                    stage="script"
+                    if(data.has("captureError"))error("Script error")
+                    stage="price"
                     val explicit=data.getString("prices")
                     val scoped=data.optJSONArray("scopedPrices")
                     val scopedValues=(0 until minOf(scoped?.length()?:0,32))
                         .mapNotNull{scopedProductPrice(scoped?.optString(it).orEmpty())}.distinct()
                     val priceText=if(explicit.isBlank()&&scopedValues.size==1)
                         "Обычная цена: "+number(scopedValues.single())+" ₽" else explicit
+                    stage="metadata"
                     val result=ProductImporter.fromRenderedPage(data.getString("html"),priceText,page,seed.store,needPhoto&&partial?.photo==null)
                     if(!active)return@launch
+                    stage="navigation_after_read"
                     if(web.url?.let{allowed(it)}!=page)error("Page changed")
                     val previous=partial
                     val combined=result.copy(title=result.title?:previous?.title,photo=previous?.photo?:result.photo)
@@ -189,7 +201,9 @@ internal val readCardScript="""
                     }else apply(combined)
                 }catch(e:kotlinx.coroutines.CancellationException){throw e}
                 catch(e:Exception){if(active){
-                    android.util.Log.w("ProductImport","Rendered capture failed: "+e.javaClass.simpleName)
+                    val diagnostic=stage+":"+e.javaClass.simpleName
+                    captureDiagnostic?.invoke(diagnostic)
+                    android.util.Log.w("ProductImport","Rendered capture failed: "+diagnostic)
                     message="Не удалось прочитать карточку. Попробуйте после загрузки."
                 }}
                 finally{if(active)busy=false}

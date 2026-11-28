@@ -19,6 +19,7 @@ run_suite() {
   cp -r app/build/reports/androidTests/connected/. "app/build/verification/$profile/" || true
   adb shell dumpsys input_method > "app/build/verification/$profile/input-method.txt"
   adb shell dumpsys window > "app/build/verification/$profile/window.txt"
+  adb logcat -d -s ProductImport:W > "app/build/verification/$profile/product-import.txt" || true
 }
 run_suite default
 adb shell wm size 720x1280

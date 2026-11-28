@@ -26,6 +26,7 @@ class ProductBrowserLayoutTest{
     @Test fun browserPrimaryActionIsAboveWebContentAndReadsRenderedPrice(){
         val result=AtomicReference<ProductLookup?>()
         val web=AtomicReference<WebView>()
+        val captureError=AtomicReference<String?>()
         val seed=SharedProductSeed("","Ozon","https://www.ozon.ru/product/test-123/",null)
         val fixture="""<html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>
           <h1>Чайник</h1><div data-widget="webPrice"><div>999 ₽ с картой</div><div><span>1 299 ₽</span><span> без Ozon Карты</span><del>2 000 ₽</del></div></div>
@@ -41,7 +42,7 @@ class ProductBrowserLayoutTest{
                 if(request.isForMainFrame&&request.url.toString()==seed.link)
                     WebResourceResponse("text/html","UTF-8",fixture.byteInputStream(Charsets.UTF_8))
                 else WebResourceResponse("text/plain","UTF-8",404,"Not Found",emptyMap(),ByteArrayInputStream(byteArrayOf()))
-            }){result.set(it);open=false}
+            },captureDiagnostic={captureError.set(it)}){result.set(it);open=false}
         }}
         compose.waitUntil(20000){compose.onAllNodesWithTag("capture_product").fetchSemanticsNodes().isNotEmpty()}
         val button=compose.onNodeWithTag("capture_product").assertIsDisplayed()
@@ -75,12 +76,13 @@ class ProductBrowserLayoutTest{
             val event=MotionEvent.obtain(down,SystemClock.uptimeMillis(),action,tapX,tapY,0)
             try{instrumentation.sendPointerSync(event)}finally{event.recycle()}
         }
-        try{compose.waitUntil(20000){result.get()!=null}}
+        try{compose.waitUntil(20000){result.get()!=null||captureError.get()!=null}}
         catch(e:ComposeTimeoutException){
             val diagnostic=compose.onAllNodesWithTag("product_browser_message").fetchSemanticsNodes()
                 .joinToString{it.config.toString()}
             throw AssertionError("Rendered capture did not return: "+diagnostic,e)
         }
+        assertNull("Capture failed at "+captureError.get(),captureError.get())
         assertEquals(129900L,result.get()?.price)
         assertEquals("Чайник",result.get()?.title)
     }
