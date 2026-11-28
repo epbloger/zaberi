@@ -3,6 +3,7 @@ package ru.epbloger.zaberi
 import android.graphics.Bitmap
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebResourceError
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -84,7 +85,8 @@ internal val readCardScript="""
 """.trimIndent()
 
 @Composable internal fun ProductBrowserDialog(seed:SharedProductSeed,needPhoto:Boolean,needPrice:Boolean,close:()->Unit,
-    loadPage:(WebView,HttpUrl)->Unit={view,url->view.loadUrl(url.toString())},apply:(ProductLookup)->Unit){
+    loadPage:(WebView,HttpUrl)->Unit={view,url->view.loadUrl(url.toString())},
+    localResponse:((WebResourceRequest)->WebResourceResponse?)?=null,apply:(ProductLookup)->Unit){
     val start=publicProductUrl(seed.link,seed.store)?:return
     val context=LocalContext.current
     val scope=rememberCoroutineScope()
@@ -114,6 +116,9 @@ internal val readCardScript="""
             settings.setGeolocationEnabled(false)
             CookieManager.getInstance().setAcceptThirdPartyCookies(this,false)
             webViewClient=object:WebViewClient(){
+                // Internal deterministic fixture transport. Production callers supply no override.
+                override fun shouldInterceptRequest(view:WebView,request:WebResourceRequest):WebResourceResponse? =
+                    localResponse?.invoke(request)?:super.shouldInterceptRequest(view,request)
                 override fun shouldOverrideUrlLoading(view:WebView,request:WebResourceRequest):Boolean{
                     if(!request.isForMainFrame)return request.url.scheme!="https"
                     val url=allowed(request.url.toString())

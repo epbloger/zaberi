@@ -5,6 +5,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
 import androidx.compose.ui.unit.dp
 import android.webkit.WebView
+import android.webkit.WebResourceResponse
+import java.io.ByteArrayInputStream
 import android.os.SystemClock
 import android.view.MotionEvent
 import androidx.test.platform.app.InstrumentationRegistry
@@ -32,7 +34,13 @@ class ProductBrowserLayoutTest{
             var open by remember{mutableStateOf(true)}
             if(open)ProductBrowserDialog(seed,false,true,{open=false},loadPage={view,url->
                 web.set(view)
-                view.loadDataWithBaseURL(url.toString(),fixture,"text/html","UTF-8",null)
+                view.loadUrl(url.toString())
+            },localResponse={request->
+                // Keep the actual HTTPS navigation/history and WebView document URL,
+                // unlike loadDataWithBaseURL(..., null), whose history URL is about:blank.
+                if(request.isForMainFrame&&request.url.toString()==seed.link)
+                    WebResourceResponse("text/html","UTF-8",fixture.byteInputStream(Charsets.UTF_8))
+                else WebResourceResponse("text/plain","UTF-8",404,"Not Found",emptyMap(),ByteArrayInputStream(byteArrayOf()))
             }){result.set(it);open=false}
         }}
         compose.waitUntil(20000){compose.onAllNodesWithTag("capture_product").fetchSemanticsNodes().isNotEmpty()}
@@ -60,6 +68,7 @@ class ProductBrowserLayoutTest{
             assertTrue("Action must clear right system inset",originX+bounds.right<=rootLocation[0]+root.width-(insets?.right?:0)+2)
         }
         compose.waitUntil(20000){runCatching{button.assertIsEnabled();true}.getOrDefault(false)}
+        compose.runOnIdle{assertEquals("Fixture must navigate to the real allowed HTTPS document URL",seed.link,web.get().url)}
         val instrumentation=InstrumentationRegistry.getInstrumentation()
         val down=SystemClock.uptimeMillis()
         for(action in listOf(MotionEvent.ACTION_DOWN,MotionEvent.ACTION_UP)){
